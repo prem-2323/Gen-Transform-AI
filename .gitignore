@@ -44,3 +44,5 @@ Thumbs.db
 # Local service accounts / secrets
 serviceAccountKey.json
 serviceAccount*.json
+/bin/ffmpeg
+/bin/ffprobe

@@ -30,6 +30,24 @@ MANUAL ENVIRONMENT SETUP (IF RUNNING MANUALLY):
    cd stable-diffusion-webui-forge
    .\webui-user.bat
 
+
+   cd ~/Gen-Transform-AI
+   mkdir -p bin
+cd bin
+wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+tar -xf ffmpeg-release-amd64-static.tar.xz
+
+find . -type f -name ffmpeg -executable -exec cp {} ./ffmpeg \;
+find . -type f -name ffprobe -executable -exec cp {} ./ffprobe \;
+
+
+./ffmpeg -version
+
+
+
+
+
+
 2. Ollama AI Server & Models:
    curl.exe -L -o OllamaSetup.exe "https://ollama.com/download/OllamaSetup.exe"
    .\OllamaSetup.exe /SILENT
