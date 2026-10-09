@@ -44,5 +44,11 @@ Thumbs.db
 # Local service accounts / secrets
 serviceAccountKey.json
 serviceAccount*.json
-/bin/ffmpeg
-/bin/ffprobe
+
+# Local binaries & FFmpeg
+bin/
+/bin/
+ffmpeg
+ffprobe
+*.tar.xz
+ffmpeg-*-static/

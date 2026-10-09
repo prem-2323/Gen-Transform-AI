@@ -15,6 +15,7 @@ Phase 1 Architectural Layout:
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,12 @@ from pathlib import Path
 _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
+
+# Ensure project root 'bin' directory is in PATH for ffmpeg and ffprobe
+_project_root = _backend_dir.parent
+_bin_dir = _project_root / "bin"
+if _bin_dir.is_dir() and str(_bin_dir) not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 from contextlib import asynccontextmanager
 from typing import Any, Dict

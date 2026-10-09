@@ -6,6 +6,11 @@ title Gen-Transform-AI - Master Setup and Launch Controller
 set "ROOT_DIR=%~dp0"
 cd /d "%ROOT_DIR%"
 
+:: Ensure local bin directory is in PATH
+if exist "%ROOT_DIR%bin" (
+    set "PATH=%ROOT_DIR%bin;%PATH%"
+)
+
 cls
 echo ==============================================================================
 echo        GEN-TRANSFORM-AI / DOCLINK GROUNDED RAG PLATFORM
@@ -22,6 +27,7 @@ set "HAS_GIT=0"
 set "HAS_PYTHON=0"
 set "HAS_NODE=0"
 set "HAS_NPM=0"
+set "HAS_FFMPEG=0"
 set "HAS_OLLAMA=0"
 set "HAS_FORGE=0"
 set "FORGE_DIR="
@@ -60,6 +66,26 @@ if %ERRORLEVEL% EQU 0 (
     echo   [OK] NPM is available.
 ) else (
     echo   [ERROR] NPM is not installed or not in PATH!
+)
+
+:: Check FFmpeg & FFprobe
+where ffmpeg >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    set "HAS_FFMPEG=1"
+    echo   [OK] FFmpeg is available.
+) else (
+    if exist "%ROOT_DIR%bin\ffmpeg.exe" (
+        set "PATH=%ROOT_DIR%bin;!PATH!"
+        set "HAS_FFMPEG=1"
+        echo   [OK] FFmpeg found in bin folder.
+    ) else if exist "%ROOT_DIR%bin\ffmpeg" (
+        set "PATH=%ROOT_DIR%bin;!PATH!"
+        set "HAS_FFMPEG=1"
+        echo   [OK] FFmpeg found in bin folder.
+    ) else (
+        echo   [INFO] FFmpeg not found on system. Auto-downloading to bin...
+        call :AUTO_SETUP_FFMPEG
+    )
 )
 
 :: Check Ollama
@@ -134,6 +160,7 @@ echo   [4] SD Forge Image Gen:    http://localhost:7860  (Running in Forge termi
 echo   ----------------------------------------------------------------------------
 echo   * Swagger API Docs:      http://localhost:8000/docs
 echo   * Backend Health Check:  http://localhost:8000/health
+echo   * FFmpeg Engine:         Available (Video & Audio Pipeline Ready)
 echo ==============================================================================
 echo.
 echo [*] Opening Web Application in your browser (within 3 seconds)...
@@ -150,6 +177,30 @@ exit /b 0
 :: -----------------------------------------------------------------------------
 :: SUBROUTINES & HELPERS
 :: -----------------------------------------------------------------------------
+
+:AUTO_SETUP_FFMPEG
+if not exist "%ROOT_DIR%bin" mkdir "%ROOT_DIR%bin" 2>nul
+echo   Downloading FFmpeg for Windows...
+curl.exe -L -o "%TEMP%\ffmpeg.zip" "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+if exist "%TEMP%\ffmpeg.zip" (
+    echo   Extracting FFmpeg binaries to bin...
+    tar -xf "%TEMP%\ffmpeg.zip" -C "%TEMP%"
+    for /r "%TEMP%" %%F in (ffmpeg.exe ffprobe.exe) do (
+        if exist "%%F" copy /y "%%F" "%ROOT_DIR%bin\" >nul
+    )
+    del "%TEMP%\ffmpeg.zip" >nul 2>&1
+    if exist "%ROOT_DIR%bin\ffmpeg.exe" (
+        set "PATH=%ROOT_DIR%bin;!PATH!"
+        set "HAS_FFMPEG=1"
+        echo   [OK] FFmpeg installed successfully into bin.
+    ) else (
+        echo   [WARNING] FFmpeg extraction did not find binaries.
+    )
+) else (
+    echo   [WARN] Could not auto-download FFmpeg. Video generation may be limited.
+    echo          Refer to readme.txt for manual FFmpeg setup.
+)
+exit /b 0
 
 :AUTO_SETUP_OLLAMA
 where ollama >nul 2>&1
@@ -246,7 +297,7 @@ exit /b 0
 
 :START_BACKEND
 echo [*] Launching Backend API Server Terminal on Port 8000...
-start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "set PATH=%ROOT_DIR%bin;!PATH! && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 exit /b 0
 
 :START_FRONTEND
