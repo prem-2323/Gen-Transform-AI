@@ -20,3 +20,4 @@ for i, (title, subtitle) in enumerate(scenes, start=1):
     image.save(folder / f"scene_{i:02}.png")
 
 print("SUCCESS: 3 sample images created")
+
