@@ -385,3 +385,72 @@ async def generate_video_pipeline_endpoint(
         scene_count=scene_count,
         use_forge=use_forge,
     )
+
+
+# ── STEP 9 — Direct /video/generate and /video/download ───────────────────────
+
+from pydantic import BaseModel
+from .video_generator import generate_video
+
+
+class SceneInput(BaseModel):
+    text: str
+
+
+class SimpleVideoRequest(BaseModel):
+    title: str = "SIH 26154 Content Transformation"
+    scenes: List[SceneInput]
+
+
+@router.post(
+    "/generate",
+    summary="Step 9 — Generate Video from Scenes",
+    description="Takes a list of scene texts, synthesizes voice-over with edge-tts, and renders MP4 via FFmpeg.",
+)
+def create_video_endpoint(request: SimpleVideoRequest):
+    """Generates MP4 video from given scene texts."""
+    try:
+        scenes = [{"text": scene.text} for scene in request.scenes]
+        output = generate_video(scenes, title=request.title)
+        return {
+            "status": "completed",
+            "title": request.title,
+            "video_path": output,
+            "download_url": "/video/download",
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Video generation failed: {exc}",
+        )
+
+
+@router.get(
+    "/download",
+    summary="Step 9 — Download Generated Video",
+    description="Serves the generated MP4 file as contentforge_video.mp4.",
+)
+def download_video_endpoint():
+    """Download the final synthesized MP4 video."""
+    candidates = [
+        Path("generated/videos/final_video.mp4"),
+        Path(__file__).resolve().parent.parent / "generated" / "videos" / "final_video.mp4",
+        VIDEO_DIR / "final_video.mp4",
+    ]
+    target_file = None
+    for c in candidates:
+        if c.exists():
+            target_file = c
+            break
+
+    if not target_file:
+        raise HTTPException(
+            status_code=404,
+            detail="Video not generated yet",
+        )
+
+    return FileResponse(
+        target_file,
+        media_type="video/mp4",
+        filename="contentforge_video.mp4",
+    )

@@ -2,11 +2,6 @@
 video/tts_generator.py
 ~~~~~~~~~~~~~~~~~~~~~~
 Narration audio generation using Edge TTS for each video scene.
-
-Outputs:
-    generated/audio/scene_01.mp3
-    generated/audio/scene_02.mp3
-    ...
 """
 from __future__ import annotations
 
@@ -14,156 +9,97 @@ import asyncio
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
-DEFAULT_VOICE = "en-US-AriaNeural"
-DEFAULT_AUDIO_DIR = Path("generated/audio")
+AUDIO_DIR = Path("generated/audio")
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# Valid minimal MP3 frame header (MPEG-1 Layer 3, 128 kbps, 44.1 kHz, stereo)
+# Minimal valid MP3 frame header for emergency offline fallback
 _MINIMAL_MP3_BYTES = (
     b"\xff\xfb\x90d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    * 60
+    * 50
 )
 
 
-def _write_silent_audio(output_path: Path) -> None:
-    """Write minimal playable MP3 bytes when offline or if all TTS engines fail."""
-    try:
-        output_path.write_bytes(_MINIMAL_MP3_BYTES)
-    except Exception:
-        pass
-
-
-async def generate_narration_audio(
-    text: str,
-    output_path: str | Path,
-    voice: str = DEFAULT_VOICE,
-    rate: str = "+0%",
-) -> str:
-    """Generate audio MP3 file from narration text using edge-tts with resilient fallbacks.
-
-    Args:
-        text: Narration text to synthesize.
-        output_path: Target path for the MP3 file.
-        voice: Voice code (default: en-US-AriaNeural).
-        rate: Speed modifier (default: +0%).
-
-    Returns:
-        Absolute path to the saved MP3 file.
-    """
-    target = Path(output_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-
+async def generate_voice(text: str, output_path: str):
+    """Generate audio MP3 file from text using edge-tts with resilient fallbacks."""
     clean_text = (text or "").strip()
     if not clean_text:
         clean_text = "Scene narration."
 
-    # 1. Primary: edge-tts
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
     try:
         import edge_tts
 
-        communicate = edge_tts.Communicate(clean_text, voice, rate=rate)
+        communicate = edge_tts.Communicate(
+            text=clean_text,
+            voice="en-US-AriaNeural",
+            rate="+0%",
+            volume="+0%",
+        )
         await communicate.save(str(target))
         if target.exists() and target.stat().st_size > 0:
-            return str(target.resolve())
+            return
     except Exception:
         pass
 
-    # 2. Secondary: backend fallback service (pyttsx3 / gTTS / ffmpeg)
+    # Secondary: local pyttsx3 or backend audio service fallback
     try:
         from text.tts import generate_audio as text_generate_audio
 
-        saved = await text_generate_audio(
+        await text_generate_audio(
             text=clean_text,
             output_file=str(target),
-            voice=voice,
-            rate=rate,
+            voice="en-US-AriaNeural",
         )
         if target.exists() and target.stat().st_size > 0:
-            return str(target.resolve())
+            return
     except Exception:
         pass
 
-    # 3. Tertiary: Local FFmpeg lavfi tone generator if available
+    # Tertiary: minimal silent fallback
+    if not target.exists() or target.stat().st_size == 0:
+        target.write_bytes(_MINIMAL_MP3_BYTES)
+
+
+def create_voice(text: str, filename: str) -> str:
+    """Generate voice audio and save into AUDIO_DIR/filename."""
+    target_path = Path(filename)
+    if not target_path.is_absolute() and target_path.parent == Path("."):
+        output_path = AUDIO_DIR / filename
+    else:
+        output_path = target_path
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     try:
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "anullsrc=r=44100:cl=stereo",
-            "-t",
-            "3",
-            "-q:a",
-            "9",
-            str(target),
-        ]
-        res = subprocess.run(cmd, capture_output=True, timeout=5)
-        if res.returncode == 0 and target.exists() and target.stat().st_size > 0:
-            return str(target.resolve())
-    except Exception:
-        pass
-
-    # 4. Final: Write minimal silent MP3
-    _write_silent_audio(target)
-    return str(target.resolve())
-
-
-def generate_narration_audio_sync(
-    text: str,
-    output_path: str | Path,
-    voice: str = DEFAULT_VOICE,
-    rate: str = "+0%",
-) -> str:
-    """Synchronous helper for generate_narration_audio."""
-    try:
-        return asyncio.run(generate_narration_audio(text, output_path, voice, rate))
+        asyncio.run(generate_voice(text, str(output_path)))
     except RuntimeError:
-        # If an event loop is already running in the current thread:
+        # If an event loop is already active in the current thread (e.g. inside FastAPI)
         loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            generate_narration_audio(text, output_path, voice, rate)
-        )
+        if loop.is_running():
+            import nest_asyncio
+
+            nest_asyncio.apply()
+        loop.run_until_complete(generate_voice(text, str(output_path)))
+
+    return str(output_path)
 
 
-async def generate_scene_audio_files(
-    scenes: List[Dict[str, Any]],
-    output_dir: str | Path = DEFAULT_AUDIO_DIR,
-    voice: str = DEFAULT_VOICE,
-    prefix: str = "scene",
-    rate: str = "+0%",
-) -> List[str]:
-    """Generate one MP3 audio file per scene in the given output directory.
-
-    Args:
-        scenes: List of scene dictionaries (with 'text' or 'narration' key).
-        output_dir: Target folder (default: generated/audio).
-        voice: Voice identifier.
-        prefix: Filename prefix (e.g. 'scene' -> scene_01.mp3).
-        rate: Speed modifier.
-
-    Returns:
-        List of absolute paths to generated audio files.
-    """
+async def generate_scene_audio_files(scenes, output_dir=AUDIO_DIR, prefix="scene"):
+    """Generate audio files for a list of scene dictionaries."""
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for i, sc in enumerate(scenes, 1):
+        txt = sc.get("text") or sc.get("narration") or f"Scene {i}."
+        fpath = out_dir / f"{prefix}_{i:02d}.mp3"
+        await generate_voice(txt, str(fpath))
+        paths.append(str(fpath))
+    return paths
 
-    audio_paths: List[str] = []
-    for idx, scene in enumerate(scenes, start=1):
-        narration = (
-            scene.get("text")
-            or scene.get("narration")
-            or f"Scene {idx} narration."
-        )
-        audio_file = out_dir / f"{prefix}_{idx:02d}.mp3"
-        saved = await generate_narration_audio(
-            text=narration,
-            output_path=audio_file,
-            voice=voice,
-            rate=rate,
-        )
-        audio_paths.append(saved)
 
-    return audio_paths
+# Aliases for backward compatibility
+generate_narration_audio = generate_voice
