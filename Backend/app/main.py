@@ -169,6 +169,7 @@ from video.routes import router as video_studio_router
 
 app.include_router(image_studio_router, prefix="/api/image-studio", tags=["Image Studio"])
 app.include_router(video_studio_router, prefix="/api/media", tags=["Video Studio"])
+app.include_router(video_studio_router)
 
 
 

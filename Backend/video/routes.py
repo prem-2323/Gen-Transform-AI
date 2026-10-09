@@ -323,6 +323,39 @@ async def generate_video(request: VideoRequest):
     )
 
 
+# ── GET /video/download ────────────────────────────────────────────────────────
+
+@router.get(
+    "/download",
+    summary="Step 9 — Download Generated Video",
+    description="Serves the generated MP4 file as contentforge_video.mp4.",
+)
+def download_video_endpoint():
+    """Download the final synthesized MP4 video."""
+    candidates = [
+        Path("generated/videos/final_video.mp4"),
+        Path(__file__).resolve().parent.parent / "generated" / "videos" / "final_video.mp4",
+        VIDEO_DIR / "final_video.mp4",
+    ]
+    target_file = None
+    for c in candidates:
+        if c.exists():
+            target_file = c
+            break
+
+    if not target_file:
+        raise HTTPException(
+            status_code=404,
+            detail="Video not generated yet",
+        )
+
+    return FileResponse(
+        target_file,
+        media_type="video/mp4",
+        filename="contentforge_video.mp4",
+    )
+
+
 # ── GET /video/{filename} ──────────────────────────────────────────────────────
 
 @router.get(
@@ -375,7 +408,7 @@ async def generate_script_endpoint(
 async def generate_video_pipeline_endpoint(
     text: str = Query(..., description="Source content"),
     scene_count: int = Query(3, ge=1, le=10, description="Number of scenes"),
-    orientation: str = Query("landscape", regex="^(landscape|vertical)$"),
+    orientation: str = Query("landscape", pattern="^(landscape|vertical)$"),
     use_forge: bool = Query(True, description="Attempt Stable Diffusion Forge image generation"),
 ):
     """Executes full video generation pipeline and outputs final MP4."""
@@ -389,6 +422,7 @@ async def generate_video_pipeline_endpoint(
 
 # ── STEP 9 — Direct /video/generate and /video/download ───────────────────────
 
+from typing import List
 from pydantic import BaseModel
 from .video_generator import generate_video
 
@@ -399,7 +433,7 @@ class SceneInput(BaseModel):
 
 class SimpleVideoRequest(BaseModel):
     title: str = "SIH 26154 Content Transformation"
-    scenes: List[SceneInput]
+    scenes: list[SceneInput]
 
 
 @router.post(
@@ -423,34 +457,3 @@ def create_video_endpoint(request: SimpleVideoRequest):
             status_code=500,
             detail=f"Video generation failed: {exc}",
         )
-
-
-@router.get(
-    "/download",
-    summary="Step 9 — Download Generated Video",
-    description="Serves the generated MP4 file as contentforge_video.mp4.",
-)
-def download_video_endpoint():
-    """Download the final synthesized MP4 video."""
-    candidates = [
-        Path("generated/videos/final_video.mp4"),
-        Path(__file__).resolve().parent.parent / "generated" / "videos" / "final_video.mp4",
-        VIDEO_DIR / "final_video.mp4",
-    ]
-    target_file = None
-    for c in candidates:
-        if c.exists():
-            target_file = c
-            break
-
-    if not target_file:
-        raise HTTPException(
-            status_code=404,
-            detail="Video not generated yet",
-        )
-
-    return FileResponse(
-        target_file,
-        media_type="video/mp4",
-        filename="contentforge_video.mp4",
-    )

@@ -39,3 +39,4 @@ for index, (heading, subtitle) in enumerate(scenes, start=1):
     image.save(output_dir / f"scene_{index:02}.png")
 
 print("Sample scene images created.")
+
