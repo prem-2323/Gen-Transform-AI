@@ -39,6 +39,7 @@ from .scene_generator import generate_video_scenes
 from .schemas import SceneSummary, VideoRequest, VideoResponse, VideoPlanRequest, IntelligentVideoPlan
 from .service import generate_all_scene_audio, generate_all_scene_images
 from .planner import IntelligentVideoPlanner, normalize_tone, seconds_to_srt_timestamp, tts_rate_for_tone
+from .video_generator import VideoGenerator, generate_video_script
 
 
 router = APIRouter(prefix="/video", tags=["Video Generation"])
@@ -347,3 +348,40 @@ def get_video(filename: str, download: bool = Query(False, description="Force do
     if download:
         return FileResponse(path=str(candidate), media_type=media_type, filename=candidate.name)
     return FileResponse(path=str(candidate), media_type=media_type)
+
+
+# ── POST /video/script (Step 3) ────────────────────────────────────────────────
+
+@router.post(
+    "/script",
+    summary="Generate Video Script with Fact Validation (Step 3)",
+    description="Transforms source content into structured scenes (text + visual_prompt) with factual grounding validation.",
+)
+async def generate_script_endpoint(
+    text: str = Query(..., description="Source document or topic content"),
+    scene_count: int = Query(3, ge=1, le=10, description="Target number of scenes"),
+):
+    """Generate structured script with text, visual_prompt, and fact validation."""
+    return generate_video_script(source_content=text, scene_count=scene_count)
+
+
+# ── POST /video/pipeline (Steps 2-4) ──────────────────────────────────────────
+
+@router.post(
+    "/pipeline",
+    summary="End-to-End Video Generation Pipeline (Steps 2-4)",
+    description="Full automated workflow: Step 3 script -> Step 2 TTS -> Step 4 images -> FFmpeg MP4 assembly.",
+)
+async def generate_video_pipeline_endpoint(
+    text: str = Query(..., description="Source content"),
+    scene_count: int = Query(3, ge=1, le=10, description="Number of scenes"),
+    orientation: str = Query("landscape", regex="^(landscape|vertical)$"),
+    use_forge: bool = Query(True, description="Attempt Stable Diffusion Forge image generation"),
+):
+    """Executes full video generation pipeline and outputs final MP4."""
+    vg = VideoGenerator(orientation=orientation)
+    return await vg.generate_video_from_text(
+        source_text=text,
+        scene_count=scene_count,
+        use_forge=use_forge,
+    )

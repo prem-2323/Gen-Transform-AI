@@ -52,3 +52,10 @@ ffmpeg
 ffprobe
 *.tar.xz
 ffmpeg-*-static/
+
+# Generated Media (Audio, Scenes, Videos)
+generated/
+Backend/generated/
+generated_images/
+generated_audio/
+generated_videos/
