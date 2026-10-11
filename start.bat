@@ -6,9 +6,12 @@ title Gen-Transform-AI - Master Setup and Launch Controller
 set "ROOT_DIR=%~dp0"
 cd /d "%ROOT_DIR%"
 
-:: Ensure local bin directory is in PATH
+:: Ensure local bin and virtual environment are in PATH
 if exist "%ROOT_DIR%bin" (
     set "PATH=%ROOT_DIR%bin;%PATH%"
+)
+if exist "%ROOT_DIR%.venv\Scripts" (
+    set "PATH=%ROOT_DIR%.venv\Scripts;%PATH%"
 )
 
 cls
