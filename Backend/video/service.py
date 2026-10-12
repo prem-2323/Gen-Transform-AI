@@ -37,7 +37,11 @@ AUDIO_DIR  = Path(os.getenv("AUDIO_STORAGE", "generated_audio"))
 
 # Shared style suffix for all scene images
 DEFAULT_IMAGE_STYLE = "photorealistic, cinematic lighting, sharp focus, 8k, highly detailed, masterpiece"
-DEFAULT_NEGATIVE_PROMPT = "blurry, low quality, distorted, deformed, watermark, text, logo, signature, ugly, extra limbs, bad anatomy, amateur photography, noisy, oversaturated"
+DEFAULT_NEGATIVE_PROMPT = (
+    "blurry, low quality, distorted, deformed, watermark, text, logo, signature, ugly, "
+    "extra limbs, bad anatomy, amateur photography, noisy, oversaturated, "
+    "empty room, empty office, vacant boardroom, conference table, empty chairs, blank screen"
+)
 
 GROUNDED_VISUAL_PROMPT = """\
 Create a realistic visual representation of the following source fact.
@@ -114,8 +118,8 @@ def generate_scene_image(
     if is_last_synthetic():
         raise ImageGenerationError(
             "Stable Diffusion Forge is offline at 127.0.0.1:7860 — cannot render "
-            "scene imagery. Start Forge via start_forge.bat (project root) or "
-            "stable-diffusion-webui-forge/start-image-api.bat, then regenerate the video."
+            "scene imagery. Start the application via start.bat (project root) "
+            "to launch all services, then regenerate the video."
         )
 
     # Validate + normalise to RGB PNG

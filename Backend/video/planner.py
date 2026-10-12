@@ -174,7 +174,7 @@ CONFIGURATION:
 - MAX WORDS PER SCENE: {max_words_per_scene} words (STRICT LIMIT to prevent speech overrun)
 
 TONE & STYLE GUIDELINES:
-- Professional: Clear, objective, polished executive narrative with clean modern studio visuals.
+- Professional: Clear, objective, polished executive narrative with high-detail focal subject, modern technology displays, and cinematic studio lighting (never empty rooms or vacant tables).
 - Cinematic: Dramatic, evocative storytelling with 35mm film aesthetic, dramatic lighting, and deep atmospheric framing.
 - Inspiring: Visionary, forward-looking narration with warm, aspirational, golden hour imagery.
 - Educational: Explanatory, concept-focused narration with clear illustrative visual prompts.
@@ -183,10 +183,14 @@ TONE & STYLE GUIDELINES:
 
 CORE RULES:
 1. Read and understand the complete source content first.
-2. Extract the core factual concepts from the source.
+2. Extract the core factual concepts and topical themes from the source.
 3. Create EXACTLY {num_scenes} scenes representing those concepts.
 4. Every scene narration MUST NOT exceed {max_words_per_scene} words to preserve the exact {target_duration}s video length.
-5. The visual_prompt MUST visually depict the scene's source concept with style matching the requested {tone} tone.
+5. VISUAL PROMPT REQUIREMENTS FOR DIFFUSION:
+   - Each 'visual_prompt' MUST describe a concrete, physical, photorealistic scene (subject, physical environment, camera framing, lighting, high detail) matching {tone} style.
+   - NEVER describe empty conference rooms, vacant boardroom tables, plain office chairs, or blank sheets of paper.
+   - If the source content contains procedural instructions or prompt meta-language (e.g. "Analyze the document", "Extract key facts", "Transform the information", "Ensure accuracy", "Create a LinkedIn post", "Organize clearly"), do NOT depict procedural text or words on paper. Instead, visually depict the actual semantic real-world scenario (e.g., AI neural networks processing complex data streams in high-tech lab, specialists reviewing verified intelligence reports on glowing digital displays).
+   - Never output procedural words like "analyze", "extract", "summarize", "instructions", "prompt", "watermark", or "text" inside visual_prompt.
 6. The on_screen_text MUST be a punchy 2-4 word banner.
 7. Preserve the meaning of the original source without inventing extraneous elements.
 
@@ -201,7 +205,7 @@ Return ONLY valid JSON matching this schema:
       "scene_number": 1,
       "source_fact": "Exact factual concept from source text",
       "narration": "Voiceover narration strictly under {max_words_per_scene} words in {tone} tone",
-      "visual_prompt": "Photorealistic {tone} visual prompt representing the source fact, 8k, sharp focus",
+      "visual_prompt": "Photorealistic {tone} visual description of physical scene, subject, lighting, 8k, sharp focus",
       "on_screen_text": "Short headline (max 4 words)",
       "transition_type": "crossfade"
     }}
@@ -218,6 +222,32 @@ class IntelligentVideoPlanner:
     Determines scene counts, durations, visual importance, narration limits,
     transition timing, and subtitle synchronization.
     """
+
+    @classmethod
+    def _budget_source(cls, content: str, max_tokens: int = 3000) -> str:
+        """Token-aware source clamp (replaces unbounded prompt injection)."""
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+
+            _b = _P(__file__).resolve().parent.parent
+            if str(_b) not in _sys.path:
+                _sys.path.insert(0, str(_b))
+            from app.core.token_budgets import truncate_to_token_budget
+
+            out, info = truncate_to_token_budget(
+                (content or "").strip(), max_tokens, model="qwen", stage="video_plan"
+            )
+            if info.get("truncated"):
+                logger.warning(
+                    "video_plan source truncated original=%s kept=%s budget=%s",
+                    info.get("original_tokens"),
+                    info.get("kept_tokens"),
+                    max_tokens,
+                )
+            return out
+        except Exception:
+            return (content or "").strip()[:12000]
 
     @classmethod
     def plan_video(
@@ -251,15 +281,27 @@ class IntelligentVideoPlanner:
             audience=audience,
             language=language,
             max_words_per_scene=max_words,
-            source_text=content.strip()
+            source_text=cls._budget_source(content),
         )
 
         planned_scenes_raw = []
         video_title = "AI Video Production"
 
-        # Try LLM-driven planning
+        # Try LLM-driven planning (centralized per-deliverable output budget).
         try:
-            raw_response = generate_with_qwen(prompt, num_predict=1200, timeout=45)
+            try:
+                import sys as _sys
+                from pathlib import Path as _P
+
+                _b = _P(__file__).resolve().parent.parent
+                if str(_b) not in _sys.path:
+                    _sys.path.insert(0, str(_b))
+                from app.core.token_budgets import resolve_output_budget as _rob
+
+                _np = int(_rob("video_plan", None))
+            except Exception:
+                _np = 1200
+            raw_response = generate_with_qwen(prompt, num_predict=_np, timeout=45)
             data = cls._extract_json(raw_response)
             if isinstance(data, dict):
                 video_title = data.get("title", video_title)
@@ -391,6 +433,40 @@ class IntelligentVideoPlanner:
         return calibrated_scenes
 
     @classmethod
+    def _clean_visual_subject(cls, text: str) -> str:
+        """Extract concrete visual subject from raw text, stripping procedural instructions."""
+        cleaned = text.strip()
+        patterns = [
+            r"^(?:analyze|evaluate|review|examine|inspect|read)\s+(?:the|this|following)?\s*(?:document|content|text|data|report)?\s*,?\s*",
+            r"^(?:extract|identify|determine|find)\s+(?:its|the|key)?\s*(?:facts|objectives|findings|metrics|insights)?\s*,?\s*",
+            r"^(?:summarize|summarise)\s+(?:the|important)?\s*(?:findings|points|information)?\s*,?\s*",
+            r"^(?:transform|convert)\s+(?:the)?\s*(?:information|content)?\s*(?:into|to)?\s*(?:multiple\s+formats)?\s*,?\s*",
+            r"^(?:ensure|make sure)\s+(?:that)?\s*(?:all|the)?\s*(?:generated\s+outputs|outputs)?\s*,?\s*",
+            r"^(?:organize|structure)\s+(?:the|information|content)?\s*,?\s*",
+            r"^(?:avoid|prevent)\s+(?:unsupported\s+claims|errors)?\s*,?\s*",
+            r"^(?:highlight|focus on)\s+(?:the)?\s*(?:most important)?\s*(?:insights|points)?\s*,?\s*",
+            r"^(?:multiple\s+formats|including\s+an?\s+executive\s+summary|a\s+linkedin\s+post).*$",
+            r"^(?:including\s+an?\s+|such\s+as\s+|like\s+|in\s+multiple\s+formats\s*)",
+        ]
+        for pat in patterns:
+            cleaned = re.sub(pat, "", cleaned, flags=re.IGNORECASE).strip()
+
+        lower = text.lower()
+        if "intelligence" in lower or "ai" in lower:
+            return "artificial intelligence neural networks processing and visualizing complex data streams in high-tech research lab"
+        if "format" in lower or "summary" in lower or "report" in lower:
+            return "data analysts reviewing real-time analytics and strategic metrics on luminous holographic screens"
+        if "objective" in lower or "insight" in lower or "finding" in lower:
+            return "strategic corporate insights visualized on digital matrix displays in modern innovation center"
+        if "accuracy" in lower or "accurate" in lower:
+            return "data verification system with accurate real-time metrics displayed on futuristic monitors"
+
+        if len(cleaned) < 10:
+            return "modern high-tech innovation environment with glowing digital data displays"
+
+        return cleaned.rstrip(" .,;:-")
+
+    @classmethod
     def _build_deterministic_scenes(
         cls,
         content: str,
@@ -413,7 +489,7 @@ class IntelligentVideoPlanner:
             "Educational": "clean crisp studio lighting, informative infographic elements, sharp focus, 8k",
             "Authoritative": "high-end architectural framing, powerful composition, modern industrial elegance, 8k",
             "Casual": "vibrant natural daylight, candid authentic framing, relatable modern photography, 8k",
-            "Professional": "photorealistic corporate modern studio lighting, sharp focus, 8k masterpiece"
+            "Professional": "photorealistic, dynamic professional studio lighting, detailed visual subject, sharp focus, 8k masterpiece"
         }
         visual_suffix = tone_style_map.get(tone, tone_style_map["Professional"])
 
@@ -475,13 +551,14 @@ class IntelligentVideoPlanner:
             # Create punchy headline from clause
             headline = " ".join(words[:min(3, len(words))]).title()
 
-            # Formulate strictly grounded visual prompt representing the exact source fact
+            # Formulate strictly grounded visual prompt representing concrete visual subject
+            visual_subject = cls._clean_visual_subject(fact_clause)
             if idx == 1:
-                v_prompt = f"establishing shot of {fact_clause.lower().rstrip('.')}, {visual_suffix}"
+                v_prompt = f"establishing cinematic shot of {visual_subject}, {visual_suffix}"
             elif idx == num_scenes:
-                v_prompt = f"closing focal shot representing {fact_clause.lower().rstrip('.')}, {visual_suffix}"
+                v_prompt = f"closing focal shot of {visual_subject}, {visual_suffix}"
             else:
-                v_prompt = f"close-up visualization of {fact_clause.lower().rstrip('.')}, {visual_suffix}"
+                v_prompt = f"detailed perspective of {visual_subject}, {visual_suffix}"
 
             imp = 0.9 if (idx == 1 or idx == 2) else 0.75
             scenes.append({

@@ -10,6 +10,7 @@ import logging
 from typing import Any, List, Set
 
 from ..rag.schemas import RetrievalResult
+from ..core.token_budgets import estimate_tokens, get_token_budget_config
 from .config import OptimizationConfig, default_optimization_config
 from .schemas import CandidateFeatureVector, OptimizationProblemSchema
 
@@ -36,8 +37,8 @@ class ProblemFormulator:
 
         for cand in candidates:
             text = cand.text or ""
-            # Estimate token count (1 token approx 4 characters, min 10)
-            token_cost = max(10, len(text) // 4)
+            # Centralized token estimate (multilingual-safe); min 10 to avoid zero-cost.
+            token_cost = max(10, estimate_tokens(text))
 
             text_lower = text.lower()
             text_words = set(re.findall(r"\b[a-zA-Z0-9\-_]{2,}\b", text_lower))

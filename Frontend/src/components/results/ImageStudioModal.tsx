@@ -43,11 +43,13 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
   const [result, setResult] = useState<GeneratedImageResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [forgeStatus, setForgeStatus] = useState<ForgeStatusResponse | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
 
-  // Probe Forge once on open so the user knows which mode they're in
+  // Probe Forge once on open so the user knows which mode they're in (real check, never assumed)
   useEffect(() => {
     if (!isOpen) return;
     setForgeStatus(null);
+    setIsChecking(true);
     imageStudioApi
       .getStatus()
       .then(setForgeStatus)
@@ -57,16 +59,17 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
           online: false,
           message: 'Could not reach the backend to check Forge status.',
         }),
-      );
+      )
+      .finally(() => setIsChecking(false));
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isGenerating) return;
     setIsGenerating(true);
     setError(null);
-    setResult(null);
+    // Preserve last good result until success (failed retry never wipes viewport).
     try {
       const response = await imageStudioApi.generate({
         prompt: prompt.trim().slice(0, 4000),
@@ -74,9 +77,9 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
       });
       setResult(response);
       onShowToast(
-        response.synthetic ? 'Placeholder Generated' : 'Image Generated',
+        response.synthetic ? 'UI Preview Rendered (Not AI)' : 'Image Generated',
         response.synthetic
-          ? 'Forge is offline — a preview placeholder was returned instead.'
+          ? 'Forge is offline — labeled UI preview returned. Start Forge and regenerate for real imagery.'
           : `Rendered on ${response.device.toUpperCase()} in ${response.generation_time}s.`,
         response.synthetic ? 'info' : 'success',
       );
@@ -115,20 +118,22 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
         </div>
 
         {/* Forge status */}
-        {forgeStatus && (
+        {(forgeStatus || isChecking) && (
           <div
             className={`p-2.5 rounded-xl text-[11px] flex items-center gap-2 border ${
-              forgeStatus.online
+              forgeStatus?.online
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                 : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
             }`}
           >
-            {forgeStatus.online ? (
+            {isChecking ? (
+              <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+            ) : forgeStatus?.online ? (
               <CheckCircle2 className="w-4 h-4 shrink-0" />
             ) : (
               <AlertTriangle className="w-4 h-4 shrink-0" />
             )}
-            <span>{forgeStatus.message}</span>
+            <span>{isChecking ? 'Checking Forge on :7860…' : forgeStatus?.message}</span>
           </div>
         )}
 

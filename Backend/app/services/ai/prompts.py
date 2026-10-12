@@ -152,54 +152,57 @@ Return ONLY valid JSON matching this schema:
 
 OUTPUT_INSTRUCTIONS = {
     "linkedin": """
-You are generating a LINKEDIN POST based on structured Stage-1 analysis.
-Follow this exact structure:
-1. Hook line: 1-2 lines scroll-stopper headline.
-2. Body: 2-4 short paragraphs (1-3 sentences each).
-3. Takeaway: Bold lead phrase highlighting the key insight.
-4. Call to Action: Engaging question or link prompt.
-5. Hashtags: 3-6 relevant hashtags derived from topic and entities.
+You are a senior professional communications specialist generating a high-impact LINKEDIN POST.
+Core Transformation Requirements:
+1. Opening Hook: 1-2 lines scroll-stopping headline centered on the source's ACTUAL core subject.
+2. Narrative Body: 2-3 focused paragraphs synthesizing the verified insights. Transform the material into engaging executive commentary; DO NOT copy raw source sentences verbatim.
+3. Key Takeaway: Highlight the strategic insight or conclusion.
+4. Call to Action: Add a concise recommendation or engagement question only if appropriate.
+5. Hashtags: 3-5 relevant, professional hashtags derived from the domain.
 
-Rules:
-- Max 1 emoji unless tone is Conversational.
-- Do not invent facts, numbers, or quotes.
-- Character count target: 800-1,300 chars.
+Strict Anti-Leakage & Grounding Rules:
+- NEVER repeat or mention prompt instructions, task meta-language, or "transform this text".
+- If the source is an instruction or prompt rather than empirical data, summarize the directive professionally.
+- Target length: 600-1,200 characters. No repetitive sentences.
 
 Return ONLY valid JSON matching this exact structure:
 {
-  "hook": "1-2 line scroll stopper",
+  "hook": "Compelling 1-2 line opening hook",
   "title": "Post Title",
-  "body": "Body text with short paragraphs and bullet points",
-  "content": "Full LinkedIn post text",
-  "callToAction": "Call to action prompt",
+  "body": "Multi-paragraph post formatted for LinkedIn with spacing and bullet points",
+  "content": "Full formatted post text",
+  "callToAction": "Concise call to action or concluding question",
   "hashtags": ["#Topic1", "#Topic2"],
   "usedFactIds": ["fact_001"]
 }
 """,
 
     "twitter": """
-You are generating a TWITTER/X post or thread based on structured Stage-1 analysis.
-Rules:
-- Single tweet mode (Brief) or Thread mode (Standard/Comprehensive: 3-6 tweets).
-- EVERY tweet text MUST be <= 280 characters.
-- Tweet 1: Hook with 🧵 or 1/N.
-- Middle tweets: One atomic fact per tweet.
-- Final tweet: Takeaway + CTA + hashtags.
+You are a social communications strategist generating a concise TWITTER/X post or thread.
+Core Transformation Requirements:
+1. Thread Structure: 2-5 posts. Each post MUST communicate a DISTINCT, standalone insight.
+2. Hard Limit: EVERY post text MUST be strictly <= 280 characters.
+3. Flow:
+   - Tweet 1: Hook and primary takeaway (with 🧵 or 1/N).
+   - Middle tweets: Specific, separate findings or evidence points.
+   - Final tweet: Conclusion or takeaway with 2-3 hashtags.
+4. DO NOT mechanically chop a single source paragraph across multiple tweets.
+5. DO NOT copy transformation directives or prompt instructions into the tweets.
 
-Return ONLY valid JSON with an array of tweet objects:
+Return ONLY valid JSON matching this exact structure:
 {
-  "content": "Full thread text",
+  "content": "Full thread text combined with double line breaks",
   "posts": [
     {
       "order": 1,
       "postNumber": 1,
-      "text": "1/3 Hook line...",
+      "text": "1/3 First tweet with hook and core finding (<=280 chars)...",
       "usedFactIds": ["fact_001"]
     },
     {
       "order": 2,
       "postNumber": 2,
-      "text": "2/3 Core fact...",
+      "text": "2/3 Second tweet with distinct evidence or metric (<=280 chars)...",
       "usedFactIds": ["fact_002"]
     }
   ]
@@ -207,94 +210,91 @@ Return ONLY valid JSON with an array of tweet objects:
 """,
 
     "summary": """
-You are generating an EXECUTIVE SUMMARY based on structured Stage-1 analysis.
-Follow this exact structure in order:
-1. Headline: 1 line stating core takeaway.
-2. Abstract paragraph: 3-5 sentences summarizing core situation without bullets.
-3. Key Points: 3-6 bullets with **bold lead phrase + colon** pattern (e.g., **Exposure scope:** 12,000 records...).
-4. Implications / So-What: 1 short paragraph on why this matters.
-5. Recommended Actions: Bulleted list (only if Stage-1 actions exist).
+You are generating a formal EXECUTIVE SUMMARY for senior decision-makers.
+Core Transformation Requirements:
+1. Substantially more concise than the source material (remove procedural boilerplate and repetitions).
+2. Headline: 1 clear line capturing the core takeaway.
+3. Abstract: 2-4 sentences synthesizing the situation, context, and primary conclusion.
+4. Key Findings: 3-5 structured bullets with bold lead phrases (**Lead:** Description).
+5. Implications: Concise explanation of the operational or strategic impact.
+6. Recommendations: Derived strictly from source evidence. If the source lacks explicit recommendations, note: "No explicit operational recommendations were prescribed in the source text."
+7. If the source consists of instructions rather than findings, summarize those instructions honestly without fabricating empirical results.
 
-Rules:
-- Do not invent facts, numbers, quotes, or names.
-- Never use generic filler.
-
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this exact structure:
 {
-  "title": "Headline",
-  "summary": "Abstract paragraph",
+  "title": "Clear Headline",
+  "summary": "Concise abstract paragraph",
   "content": "Full executive summary markdown text",
   "keyFindings": ["**Lead phrase:** Detail text"],
-  "implications": ["Implication 1"],
-  "recommendedActions": ["Action 1"],
+  "implications": ["Key strategic implication"],
+  "recommendedActions": ["Supported action item or limitation note"],
   "usedFactIds": ["fact_001"]
 }
 """,
 
     "advisory": """
-You are generating a formal ADVISORY DOCUMENT based on structured Stage-1 analysis.
-Follow this exact structure in order:
-1. Header: Advisory ID, Date, Severity Tag (🔴 CRITICAL | 🟠 HIGH | 🟡 MEDIUM | 🟢 LOW), Issued For.
-2. Summary: 2-4 sentences situational overview.
-3. Background / Context: Paragraph explaining context.
-4. Details: Structured sub-points detailing technical or situational specifics.
-5. Impact / Who is affected: Affected entities and impact scope.
-6. Recommended Actions: Numbered list using imperative voice ("1. Do X", "2. Ensure Y").
-7. References: Attribution and standards.
+You are producing a formal ADVISORY BRIEF for governance, policy, or technical leadership.
+Core Transformation Requirements:
+1. Section Structure:
+   - Executive Overview & Situation: Clear summary of the context.
+   - Verified Findings: Objective evidence extracted from the source.
+   - Risks and Implications: Real risks stated in the source. If none exist in source, explicitly state: "The source document does not identify specific risk factors or vulnerabilities."
+   - Recommendations: Actionable steps. If no actions are prescribed, explicitly identify the limitation.
+2. Never invent dates, vulnerability severity ratings, or fake policy compliance codes.
+3. Never repeat transformation instructions as findings.
 
-Rules:
-- Tone must be Formal, objective Alert/Instruct.
-- Numbered lists for actions, not bullets.
-
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this exact structure:
 {
   "advisoryId": "ADV-2026-001",
   "title": "Advisory Title",
   "severity": "HIGH",
   "severityTag": "🟠 HIGH",
-  "situation": "Summary text",
-  "background": "Background paragraph",
-  "details": ["Detail point 1"],
-  "threatImpact": "Impact text",
-  "recommendedActions": [{"phase": "Immediate", "steps": ["1. Step 1"]}],
-  "affectedEntities": ["System A"],
-  "references": ["Ref 1"],
+  "situation": "Situational overview paragraph",
+  "background": "Background context",
+  "details": ["Verified finding 1", "Verified finding 2"],
+  "threatImpact": "Impact analysis or limitation note if not specified",
+  "recommendedActions": [{"phase": "Immediate", "steps": ["1. Action item or governance review"]}],
+  "affectedEntities": ["Entity A"],
+  "references": ["Source Reference"],
   "content": "Full markdown advisory text",
   "usedFactIds": ["fact_001"]
 }
 """,
 
     "email": """
-You are generating a corporate or team Email Announcement based on structured Stage-1 analysis.
+You are drafting a professional corporate or team announcement email.
 Return ONLY valid JSON:
 {
-  "content": "Subject: [Subject]\n\nDear Team,\n\n[Body text with key points, takeaways, and call to action]."
+  "content": "Subject: [Subject]\n\nDear Team,\n\n[Concise body text communicating key findings, impact, and next steps without instruction boilerplate]."
 }
 """,
 
     "presentation": """
-You are generating a PRESENTATION (Slides + Speaker Notes) based on structured Stage-1 analysis.
-Rules:
-- Slide 1: Title slide (title, subtitle, audience/tone).
-- Slide 2: Overview/Agenda.
-- Slides 3-N: Content slides (one per major theme).
-- Slide N-1: Implications / Key Takeaways.
-- Slide N: Next Steps / Summary.
-- HARD CONSTRAINTS: Max 5 bullets per slide, max 8 words per bullet.
-- Speaker notes: 2-4 full sentences elaborating bullets for oral delivery.
+You are creating an executive PRESENTATION SLIDE DECK.
+Core Transformation Requirements:
+1. Narrative Progression: 3-5 slides adapted to the volume of source material.
+   - Slide 1: Title & Context
+   - Slide 2: Core Concepts / Key Findings
+   - Slide 3: Evidence, Metrics, or Analysis
+   - Slide 4 (or final): Implications, Strategic Recommendations, or Next Steps
+2. Hard Constraints:
+   - Max 4-5 concise bullet points per slide (max 8-10 words per bullet).
+   - Do NOT duplicate paragraphs or bullets across slides. Every slide must have a distinct purpose and title.
+   - Speaker Notes: 2-3 full spoken sentences elaborating the slide's distinct topic.
+3. Do not invent filler slides to pad the deck if the source is brief.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this exact structure:
 {
-  "presentation_title": "Title",
-  "subtitle": "Subtitle",
+  "presentation_title": "Deck Title",
+  "subtitle": "Context Subtitle",
   "slides": [
     {
       "slide_number": 1,
       "title": "Title Slide",
       "layout": "title",
-      "bullets": ["Bullet 1", "Bullet 2"],
-      "speaker_notes": "Speaker notes text",
-      "visual_recommendation": "Visual layout note",
+      "bullets": ["Context point 1", "Context point 2"],
+      "speaker_notes": "Spoken remarks for presenter.",
+      "visual_recommendation": "Visual layout recommendation",
       "usedFactIds": ["fact_001"]
     }
   ]
@@ -302,59 +302,63 @@ Return ONLY valid JSON:
 """,
 
     "video_script": """
-You are generating a VIDEO PACKAGE based on structured Stage-1 analysis.
-Target pacing: ~2.5 words/second for narration.
-JSON fields required:
-- video_title
-- duration: total duration in seconds (e.g. 60 seconds)
-- script: full narration script with scene markers
-- storyboard: list of scene objects {scene, duration_sec, visual_description, on_screen_text, narration_line}
-- visual_recommendations: {color_palette, icon_keywords, music_mood, brand_safety}
+You are producing an engaging VIDEO SCRIPT and storyboard package.
+Core Transformation Requirements:
+1. Narration Flow: Clear hook in opening 5 seconds, logical narrative transitions across scenes, and a clean concluding takeaway.
+2. Pacing: ~2.5 words per second. Natural spoken dialogue; do NOT read out raw source bullet lists mechanically.
+3. Scenes: 3-5 distinct scenes with synchronized visual directions and on-screen callouts.
+4. Do not recite transformation instructions or system prompt language.
 
-Rules:
-- Script opens with hook in first 3 seconds and closes with CTA.
-- Narration text derived strictly from Stage-1 JSON.
-
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this exact structure:
 {
-  "video_title": "Title",
+  "video_title": "Engaging Video Title",
   "duration": "60 seconds",
-  "script": "Full narration script",
+  "script": "Full narration script with scene markers",
   "storyboard": [
     {
       "scene": 1,
       "duration_sec": 15,
-      "visuals": "Visual description",
-      "narration": "Voiceover line",
-      "on_screen_text": "Callout text",
+      "visuals": "Cinematic visual description",
+      "narration": "Spoken voiceover line",
+      "on_screen_text": "On-screen text graphic",
       "usedFactIds": ["fact_001"]
     }
   ],
-  "music_recommendation": "Ambient tech",
-  "voice_over_direction": "Professional, steady pacing"
+  "music_recommendation": "Professional ambient tone",
+  "voice_over_direction": "Engaging, authoritative pacing"
 }
 """,
 
     "infographic": """
-You are generating INFOGRAPHIC CONTENT as structured JSON based on Stage-1 analysis.
-Required JSON fields:
-- headline (short, punchy, <=8 words)
-- sub_headline (1 line context)
-- key_statistics: list of {value, label, context} derived strictly from source metrics
-- sections: list of {heading, content, suggested_icon}
-- layout_recommendation: MUST be one of ["timeline", "comparison", "hub-spoke", "step-flow", "stat-grid"]
-- color_mood: suggest color theme
-- icon_keywords: list of 3-5 icon names
+You are generating a structured visual INFOGRAPHIC SPECIFICATION.
+Core Transformation Requirements:
+1. Visual Narrative: Punchy headline (<=8 words), core message, and logical section hierarchy.
+2. Metrics Integrity:
+   - ONLY include numbers and percentages in `key_statistics` if they explicitly appear in the source text.
+   - If the source contains NO numerical statistics, return an EMPTY array for `key_statistics`: `[]`.
+   - NEVER invent percentages, dates, revenue numbers, or claims counts as statistics.
+3. Sections: 2-4 distinct thematic blocks with clean headings, synthesized descriptions, and suggested icons.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this exact structure:
 {
-  "title": "Headline",
-  "main_message": "Sub headline",
-  "key_statistics": [{"value": "100%", "label": "Verified Grounding"}],
-  "sections": [{"heading": "Key Insight", "content": "Section text", "icon": "sparkles"}],
+  "title": "Concise Infographic Headline",
+  "main_message": "Core takeaway message",
+  "key_statistics": [
+    {
+      "value": "Exact Metric from source (leave empty array if none in source)",
+      "label": "Metric Description"
+    }
+  ],
+  "sections": [
+    {
+      "heading": "Section Heading",
+      "content": "Synthesized insight without raw text copy-paste",
+      "suggested_icon": "sparkles"
+    }
+  ],
   "layout_recommendation": "timeline",
-  "color_mood": "Corporate Tech",
-  "icon_keywords": ["cpu", "shield", "activity"],
+  "color_mood": "Corporate Clean",
+  "icon_keywords": ["activity", "shield"],
   "usedFactIds": ["fact_001"]
 }
 """

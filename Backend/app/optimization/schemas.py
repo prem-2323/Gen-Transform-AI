@@ -68,6 +68,8 @@ class OptimizationSelectRequest(BaseModel):
     candidates: List[Dict[str, Any]] = Field(..., description="List of retrieval candidate dictionaries")
     backend: str = Field("hybrid", description="'classical', 'quantum', or 'hybrid'")
     max_selected: int = Field(8, ge=1, le=50)
+    # Centralized budget: default RAG_MAX_CONTEXT_TOKENS=3000, hard cap 16000
+    # (see app.core.token_budgets). Range preserved for API compatibility.
     max_tokens: int = Field(3000, ge=100, le=16000)
 
 

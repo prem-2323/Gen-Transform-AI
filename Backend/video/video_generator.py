@@ -393,6 +393,18 @@ def generate_video_script(
     try:
         import requests
 
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+
+            _b = _P(__file__).resolve().parent.parent
+            if str(_b) not in _sys.path:
+                _sys.path.insert(0, str(_b))
+            from app.core.token_budgets import resolve_output_budget as _rob2
+
+            _np_vg = int(_rob2("video_gen", None))
+        except Exception:
+            _np_vg = 1024
         res = requests.post(
             ollama_url,
             json={
@@ -400,7 +412,7 @@ def generate_video_script(
                 "prompt": prompt,
                 "stream": False,
                 "think": False,
-                "options": {"temperature": 0.2, "num_predict": 1024},
+                "options": {"temperature": 0.2, "num_predict": _np_vg},
             },
             timeout=(3.0, 45.0),
         )

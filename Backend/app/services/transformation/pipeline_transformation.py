@@ -84,6 +84,8 @@ def generate(
     if not uckr:
         raise HTTPException(status_code=404, detail="No UCKR found — run analysis first.")
 
+    from .quality_gate import evaluate_deliverable_quality
+
     content = _gen(dtype, uckr, config or {})
     _mark_used(uckr, dtype)
     now = utcnow_iso()
@@ -93,10 +95,12 @@ def generate(
         for f in uckr.get("facts", [])[:5]
         if f.get("factId") or f.get("id")
     ]
+    source_text = uckr.get("sourceText") or " ".join([f.get("value", "") for f in uckr.get("facts", [])])
+    quality_res = evaluate_deliverable_quality(dtype, content, source_text, uckr)
+
     doc = {
         "id": deliv_id,
         "deliverableId": deliv_id,
-        "userId": uid,
         "userId": uid,
         "projectId": project_id,
         "sourceId": uckr.get("sourceId", ""),
@@ -106,7 +110,11 @@ def generate(
         "usedFactIds": used_facts,
         "configuration": config or {"audience": "executive", "tone": "professional",
                                      "language": "English", "detailLevel": "medium"},
-        "status": "completed",
+        "status": "completed" if quality_res.passed else "needs_review",
+        "quality": quality_res.to_dict(),
+        "qualityScore": quality_res.overall_quality_score,
+        "groundingScore": quality_res.grounding_score,
+        "qualityStatus": quality_res.status,
         "storagePath": None,
         "createdAt": now,
         "updatedAt": now,

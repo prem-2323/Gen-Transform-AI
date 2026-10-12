@@ -59,6 +59,21 @@ def _call_qwen_for_deliverable(
     try:
         import ollama
         prompt = build_transformation_prompt(dtype, uckr, cfg)
+        # Centralized per-deliverable output budget (preserves prior unbounded
+        # behaviour by choosing a sized default instead of model maximum).
+        try:
+            from ...core.token_budgets import estimate_tokens, resolve_output_budget
+
+            num_predict = int(resolve_output_budget(str(dtype), None))
+            log.info(
+                "transformation_generate type=%s prompt_tokens~%d num_predict=%d model=%s",
+                dtype,
+                int(estimate_tokens(prompt)),
+                num_predict,
+                settings.text_model,
+            )
+        except Exception:
+            num_predict = {"executive_summary": 800, "advisory": 2048}.get(str(dtype), 2048)
         response = ollama.chat(
             model=settings.text_model,
             messages=[
@@ -68,7 +83,7 @@ def _call_qwen_for_deliverable(
                 },
                 {"role": "user", "content": prompt},
             ],
-            options={"temperature": 0.2},
+            options={"temperature": 0.2, "num_predict": int(num_predict)},
         )
         content_str = response.get("message", {}).get("content", "")
         cleaned = _clean_json_str(content_str)
@@ -87,13 +102,26 @@ def generate_single_deliverable(
     source_id: str,
 ) -> DeliverableRecord:
     """Generates, validates, and persists a single deliverable from UCKR."""
+    from .quality_gate import evaluate_deliverable_quality
+
+    source_text = uckr.get("sourceText") or " ".join([f.get("value", "") for f in uckr.get("facts", [])])
+
     # 1. Attempt AI generation or fallback to template
     raw_content = _call_qwen_for_deliverable(dtype, uckr, cfg)
-    if not raw_content or not isinstance(raw_content, dict):
+    if raw_content and isinstance(raw_content, dict):
+        quality_check = evaluate_deliverable_quality(str(dtype), raw_content, source_text, uckr)
+        if not quality_check.passed:
+            log.warning(
+                "AI generation failed quality gate for %s (score=%.2f, flags=%s). Auto-repairing with quality engine.",
+                dtype, quality_check.overall_quality_score, quality_check.flags
+            )
+            raw_content = generate_deterministic_deliverable(dtype, uckr, cfg)
+    else:
         raw_content = generate_deterministic_deliverable(dtype, uckr, cfg)
 
     # 2. Validate content and fact grounding
     is_valid, errors, warnings, used_fact_ids = validate_deliverable_output(dtype, raw_content, uckr)
+    quality_res = evaluate_deliverable_quality(str(dtype), raw_content, source_text, uckr)
 
     # 3. Associate citations for used facts
     uckr_citations = uckr.get("citations", [])
@@ -116,7 +144,6 @@ def generate_single_deliverable(
         "deliverableId": deliverable_id,
         "id": deliverable_id,
         "userId": user_uid,
-        "userId": user_uid,
         "projectId": project_id,
         "sourceId": source_id,
         "uckrId": uckr_id_str,
@@ -126,19 +153,23 @@ def generate_single_deliverable(
         "content": raw_content,
         "usedFactIds": used_fact_ids,
         "citations": attached_citations,
-        "status": "completed" if is_valid else "failed",
+        "status": "completed" if (is_valid and quality_res.passed) else ("needs_review" if is_valid else "failed"),
         "validation": {
             "valid": is_valid,
             "errors": errors,
             "warnings": warnings,
         },
+        "quality": quality_res.to_dict(),
+        "qualityScore": quality_res.overall_quality_score,
+        "groundingScore": quality_res.grounding_score,
+        "qualityStatus": quality_res.status,
         "createdAt": now,
         "updatedAt": now,
     }
 
     deliv_repo = get_repository("deliverables")
     deliv_repo.insert_one(doc)
-    log.info("Persisted deliverable %s (%s) for project %s (status=%s)", deliverable_id, dtype, project_id, doc["status"])
+    log.info("Persisted deliverable %s (%s) for project %s (status=%s, qualityScore=%.2f)", deliverable_id, dtype, project_id, doc["status"], quality_res.overall_quality_score)
 
     return DeliverableRecord.model_validate(doc)
 

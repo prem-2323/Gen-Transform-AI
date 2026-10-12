@@ -25,13 +25,22 @@ class NumericValidator:
     @staticmethod
     def _normalize_number(val_str: str) -> float:
         """Convert number/monetary string to normalized float representation."""
-        clean = val_str.lower().replace(",", "").replace("$", "").replace("%", "").strip()
+        clean = val_str.lower().replace(",", "").replace("$", "").replace("₹", "").replace("rs.", "").replace("rs", "").replace("€", "").replace("%", "").strip()
         if clean.endswith("million") or clean.endswith("m"):
             clean = clean.replace("million", "").rstrip("m").strip()
             return float(clean) * 1_000_000.0
         if clean.endswith("billion") or clean.endswith("b"):
             clean = clean.replace("billion", "").rstrip("b").strip()
             return float(clean) * 1_000_000_000.0
+        if clean.endswith("lakh"):
+            clean = clean.replace("lakh", "").strip()
+            return float(clean) * 100_000.0
+        if clean.endswith("crore"):
+            clean = clean.replace("crore", "").strip()
+            return float(clean) * 10_000_000.0
+        if clean.endswith("kwh") or clean.endswith("kw") or clean.endswith("mw"):
+            clean = re.sub(r"[a-z]+$", "", clean).strip()
+            return float(clean)
         if clean.endswith("k"):
             clean = clean.rstrip("k").strip()
             return float(clean) * 1_000.0
@@ -74,7 +83,7 @@ class NumericValidator:
                 )
 
         # 2. Number & Percentage Extraction & Matching
-        number_regex = r"\b(?:\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?(?:\s*million|\s*billion)?|\d+\s*million|\d+\s*billion|\d+)\b"
+        number_regex = r"\b(?:\d+(?:\.\d+)?%|(?:₹|\$|€|rs\.?)\s*\d+(?:\.\d+)?(?:\s*(?:lakh|crore|million|billion))?|\d+\s*(?:lakh|crore|million|billion|kwh|kw|mw)|\d+)\b"
         gen_numbers = re.findall(number_regex, gen_text, re.IGNORECASE)
         source_numbers = re.findall(number_regex, source_text, re.IGNORECASE)
 

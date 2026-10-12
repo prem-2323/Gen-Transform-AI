@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     hybrid_top_k: int = 5
     rrf_k: int = 60
 
+    # Centralized token budgets (mirror app.core.token_budgets; env-driven)
+    rag_max_context_tokens: int = 3000
+    analysis_max_input_tokens: int = 3000
+    embedding_max_tokens: int = 512
+    ollama_num_ctx: int = 4096
+    student_max_new_tokens: int = 2048
+    qwen_default_num_predict: int = 800
+
     # Teacher Model Configuration
     teacher_model: str = "qwen3:4b"
     teacher_timeout_seconds: int = 180

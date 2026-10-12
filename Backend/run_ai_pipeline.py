@@ -44,11 +44,40 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 QWEN_MODEL = "qwen2.5:3b"
 GEMMA_MODEL = "gemma2:2b"
 
+# Centralized output budgets (single source: Backend/app/core/token_budgets.py).
+# Values preserve existing behaviour; imports fall back to literals offline.
+try:
+    import sys as _sys
+
+    _backend_dir = Path(__file__).resolve().parent
+    if str(_backend_dir) not in _sys.path:
+        _sys.path.insert(0, str(_backend_dir))
+    from app.core.token_budgets import OUTPUT_BUDGETS as _OUTPUT_BUDGETS
+
+    BUDGET_ANALYSIS_REPORT = int(_OUTPUT_BUDGETS.get("analysis_report", 3000))
+    BUDGET_CROSS_VALIDATION = int(_OUTPUT_BUDGETS.get("cross_validation", 1500))
+    BUDGET_VIDEO_SCRIPT = int(_OUTPUT_BUDGETS.get("video_script", 2048))
+    BUDGET_VISUAL_DESC = int(_OUTPUT_BUDGETS.get("visual_desc", 150))
+except Exception:
+    BUDGET_ANALYSIS_REPORT = 3000
+    BUDGET_CROSS_VALIDATION = 1500
+    BUDGET_VIDEO_SCRIPT = 2048
+    BUDGET_VISUAL_DESC = 150
+
 def ollama_generate(model: str, prompt: str, temperature: float = 0.3,
                      max_tokens: int = 2048, timeout: int = 120) -> str:
     """Call Ollama API to generate text. Returns raw response string."""
     import urllib.request
     import urllib.error
+
+    try:
+        max_tokens = max(16, int(max_tokens))
+    except (TypeError, ValueError):
+        max_tokens = 2048
+    try:
+        print(f"  [budget] model={model} prompt_chars={len(prompt or '')} num_predict={max_tokens}")
+    except Exception:
+        pass
 
     payload = json.dumps({
         "model": model,
@@ -148,7 +177,7 @@ Generate a structured analysis report with these EXACT sections:
 IMPORTANT: Only use facts from the case file. Do not invent statistics or claims not in the document.
 Write in clear, professional English."""
 
-qwen_report = ollama_generate(QWEN_MODEL, analysis_prompt, temperature=0.2, max_tokens=3000, timeout=180)
+qwen_report = ollama_generate(QWEN_MODEL, analysis_prompt, temperature=0.2, max_tokens=BUDGET_ANALYSIS_REPORT, timeout=180)
 
 if qwen_report:
     print(f"  ✓ Qwen2.5 generated report ({len(qwen_report)} chars)")
@@ -172,7 +201,7 @@ CASE FILE:
 
 Be concise and factual. Only cite information from the case file."""
 
-gemma_report = ollama_generate(GEMMA_MODEL, gemma_prompt, temperature=0.2, max_tokens=1500, timeout=120)
+gemma_report = ollama_generate(GEMMA_MODEL, gemma_prompt, temperature=0.2, max_tokens=BUDGET_CROSS_VALIDATION, timeout=120)
 
 if gemma_report:
     print(f"  ✓ Gemma2 generated analysis ({len(gemma_report)} chars)")
@@ -257,7 +286,7 @@ RULES:
 5. "visual_prompt" = image description for a visual scene card
 6. Return ONLY valid JSON, no other text"""
 
-script_data = ollama_generate_json(QWEN_MODEL, script_prompt, temperature=0.2, max_tokens=2048, timeout=180)
+script_data = ollama_generate_json(QWEN_MODEL, script_prompt, temperature=0.2, max_tokens=BUDGET_VIDEO_SCRIPT, timeout=180)
 
 # Validate and fix the script
 if script_data and "scenes" in script_data and len(script_data["scenes"]) > 0:
@@ -338,7 +367,7 @@ for i, scene in enumerate(VIDEO_SCENES, 1):
 
 Format: A detailed image description suitable for a cybersecurity incident presentation."""
 
-        vis_desc = ollama_generate(GEMMA_MODEL, vis_prompt, temperature=0.4, max_tokens=150, timeout=60)
+        vis_desc = ollama_generate(GEMMA_MODEL, vis_prompt, temperature=0.4, max_tokens=BUDGET_VISUAL_DESC, timeout=60)
         if vis_desc:
             scene["visual_prompt"] = vis_desc.strip('"').strip()
             print(f"  ✓ Scene {i}: Gemma2 generated visual: {scene['visual_prompt'][:60]}...")

@@ -471,4 +471,5 @@ export type ViewState =
   | 'uckr'
   | 'agents' 
   | 'mcp' 
+  | 'image_studio'
   | 'settings';

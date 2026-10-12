@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { LinkedInDeliverable } from '../../../types';
 import { StatusBadge } from '../../common/StatusBadge';
+import { imageStudioApi, imageFileUrl } from '../../../api/mediaApi';
 
 type ExportRatio = '1.91:1' | '1:1' | '4:5' | '16:9';
 
@@ -83,8 +84,10 @@ export const LinkedInCard: React.FC<LinkedInCardProps> = ({
   const [body, setBody] = useState(deliverable.body);
   const [cta, setCta] = useState(deliverable.callToAction);
 
-  // Image Export State — synthesis itself runs on the backend (see waiting state below)
+  // Image Export State — matplotlib PNG rendered on the backend (no Forge needed)
   const [exportRatio, setExportRatio] = useState<ExportRatio>('1.91:1');
+  const [visualUrl, setVisualUrl] = useState<string | null>(null);
+  const [isGeneratingVisual, setIsGeneratingVisual] = useState(false);
 
   const currentRatio = RATIO_CONFIGS[exportRatio];
 
@@ -120,9 +123,57 @@ export const LinkedInCard: React.FC<LinkedInCardProps> = ({
     onShowToast('Downloaded', 'LinkedIn post exported as .txt', 'success');
   };
 
-  // Image synthesis requires a backend renderer — surface an honest waiting state
-  const handleGenerateImage = () => {
-    onShowToast('Waiting for Backend', 'Image synthesis will run on the backend once connected. Your post text is ready below.', 'info');
+  // Matplotlib visual — maps post text into infographic renderer (1200×627 default)
+  const handleGenerateImage = async () => {
+    if (isGeneratingVisual) return;
+    setIsGeneratingVisual(true);
+    try {
+      const bodyChunks = body.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+      const res = await imageStudioApi.generateInfographic({
+        key_message: hook || 'Executive insight',
+        key_statistics: [
+          { value: `${fullPostText.length}`, label: 'Characters', subtext: 'post length' },
+          { value: `${deliverable.hashtags.length}`, label: 'Hashtags', subtext: 'reach tags' },
+          { value: `${bodyChunks.length || 1}`, label: 'Key points', subtext: 'in body' },
+          { value: currentRatio.label, label: currentRatio.useCase, subtext: currentRatio.dimensions },
+        ],
+        supporting_points: [
+          { title: 'Core thesis', description: (bodyChunks[0] || body).slice(0, 140) },
+          { title: 'Implication', description: (bodyChunks[1] || body).slice(0, 140) },
+          { title: 'Audience', description: (deliverable.targetAudience || 'Executives').slice(0, 140) },
+          { title: 'Next step', description: cta.slice(0, 140) },
+        ],
+        call_to_action: cta,
+        layout: 'Horizontal',
+        visual_style: 'Corporate',
+        width: currentRatio.width,
+        height: currentRatio.height,
+      });
+      setVisualUrl(imageFileUrl(res.filename));
+      onUpdate({ ...deliverable, generatedImage: { id: res.filename, style: 'matplotlib', headline: hook, subheadline: cta, createdAt: new Date().toISOString() } });
+      onShowToast('Visual Rendered', `Matplotlib graphic ready (${res.width}×${res.height} in ${res.generation_time}s).`, 'success');
+    } catch (err: any) {
+      onShowToast('Render Failed', err?.message || 'Backend unreachable on :8000.', 'error');
+    } finally {
+      setIsGeneratingVisual(false);
+    }
+  };
+
+  const handleDownloadVisualPng = async () => {
+    if (!visualUrl) return;
+    try {
+      const resp = await fetch(visualUrl);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LinkedIn_Visual_${currentRatio.width}x${currentRatio.height}_${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      onShowToast('Image Exported', `Exported ${currentRatio.dimensions} px matplotlib PNG.`, 'success');
+    } catch {
+      window.open(visualUrl, '_blank');
+    }
   };
 
   const handleDownloadImage = () => {
@@ -612,8 +663,42 @@ export const LinkedInCard: React.FC<LinkedInCardProps> = ({
         </div>
       )}
 
-      {/* Empty State — visual synthesis waits for the backend */}
-      {!deliverable.generatedImage && (
+      {/* Matplotlib visual result */}
+      {visualUrl && (
+        <div className="pt-2 border-t border-slate-800/80 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-slate-400">
+            <span className="font-semibold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Matplotlib Visual Graphic</span>
+            </span>
+            <span className="font-mono text-[10px] text-slate-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800">
+              {currentRatio.dimensions} px · {currentRatio.label} ({currentRatio.useCase})
+            </span>
+          </div>
+          <div className="rounded-xl overflow-hidden border border-purple-500/30 bg-[#070b14] p-2 shadow-2xl">
+            <img src={visualUrl} alt="LinkedIn matplotlib visual" className="w-full h-auto rounded-lg block" />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={handleDownloadVisualPng}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PNG</span>
+            </button>
+            <button
+              onClick={() => { setVisualUrl(null); handleRemoveImage(); }}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+              title="Remove Image"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Empty State — generate matplotlib visual on the backend */}
+      {!visualUrl && !deliverable.generatedImage && (
         <div className="rounded-xl border border-dashed border-slate-800/90 bg-slate-950/40 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
@@ -621,20 +706,21 @@ export const LinkedInCard: React.FC<LinkedInCardProps> = ({
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-200">
-                Visual Graphic — Waiting for Backend
+                Visual Graphic — Matplotlib Ready
               </p>
               <p className="text-[11px] text-slate-400">
-                Executive image synthesis ({currentRatio.dimensions} px) will run on the backend once connected.
+                Executive image ({currentRatio.dimensions} px) renders via matplotlib on the backend — no Forge/GPU needed.
               </p>
             </div>
           </div>
 
           <button
             onClick={handleGenerateImage}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-xs font-semibold transition-all shrink-0 cursor-pointer shadow-sm"
+            disabled={isGeneratingVisual}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white text-xs font-semibold transition-all shrink-0 cursor-pointer shadow-sm"
           >
-            <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
-            <span>Waiting for Backend</span>
+            {isGeneratingVisual ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
+            <span>{isGeneratingVisual ? 'Rendering…' : 'Generate Visual'}</span>
           </button>
         </div>
       )}
@@ -668,14 +754,15 @@ export const LinkedInCard: React.FC<LinkedInCardProps> = ({
             <span>Download .txt</span>
           </button>
 
-          {/* Image synthesis waits for the backend */}
+          {/* Matplotlib visual generation (replaces Waiting for Backend) */}
           <button
             onClick={handleGenerateImage}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer bg-slate-800 text-slate-300 border border-slate-700"
-            title="Image synthesis runs on the backend once connected"
+            disabled={isGeneratingVisual}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white"
+            title="Render matplotlib PNG on the backend (no Forge needed)"
           >
-            <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
-            <span>{deliverable.generatedImage ? 'Image Pending Backend' : 'Waiting for Backend'}</span>
+            {isGeneratingVisual ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
+            <span>{isGeneratingVisual ? 'Rendering…' : visualUrl ? 'Regenerate Visual' : 'Generate Visual'}</span>
           </button>
         </div>
 

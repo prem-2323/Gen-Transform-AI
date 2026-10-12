@@ -42,6 +42,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         return { section: 'Intelligence', page: 'AI Multi-Agent System' };
       case 'mcp':
         return { section: 'Integrations', page: 'Model Context Protocol (MCP)' };
+      case 'image_studio':
+        return { section: 'Studio', page: 'AI Image Studio' };
       case 'settings':
         return { section: 'System', page: 'Workspace Preferences' };
       default:
@@ -72,9 +74,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       <div className="flex items-center gap-2.5">
         <button
-          onClick={() => setIsImageStudioOpen(true)}
+          onClick={() => onNavigate('image_studio')}
           title="AI Image Studio — Stable Diffusion Forge generation"
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors cursor-pointer"
+          className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+            currentView === 'image_studio'
+              ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+          }`}
         >
           <Wand2 className="w-3.5 h-3.5 text-cyan-400" />
           <span>Image Studio</span>

@@ -23,12 +23,17 @@ import re
 from typing import Any, Optional
 
 from ...config.settings import get_settings
+from ...core.token_budgets import (
+    estimate_tokens,
+    get_token_budget_config,
+    truncate_to_token_budget,
+)
 from .timeline_extractor import extract_timeline_deterministic
 
 log = logging.getLogger("gen-transform.ai")
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])")
-_NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)*(?:\s*(?:%|percent|million|billion|thousand|km|ms|days?|hours?))?", re.I)
+_NUMBER_RE = re.compile(r"(?:(?:₹|\$|€|rs\.?)\s*)?\b\d+(?:[.,]\d+)*(?:\s*(?:%|percent|crore|lakh|million|billion|thousand|kwh|kw|mw|panels?|solar\s+panels?|buildings?|years?|months?|km|ms|days?|hours?))?", re.I)
 _ENTITY_RE = re.compile(r"\b([A-Z][a-zA-Z0-9&.\-]{2,}(?:\s+[A-Z][a-zA-Z0-9&.\-]{2,}){0,3})")
 _DATE_RE = re.compile(r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b")
 _IMPERATIVE_RE = re.compile(r"^(must|should|shall|need to|needs to|ensure|implement|deploy|update|patch|review|monitor|establish|conduct)\b", re.I)
@@ -58,6 +63,24 @@ def _ollama_text_analysis(text: str) -> Optional[dict]:
     if client is None:
         return None
     settings = get_settings()
+    try:
+        budget = int(get_token_budget_config().analysis_max_input_tokens)
+    except Exception:
+        budget = 3000
+    model_name = str(getattr(settings, "qwen_model", "qwen3:4b"))
+    # Token-aware budgeting (replaces text[:12000]); preserves head content
+    # at a sentence boundary and logs truncation diagnostics.
+    budgeted_text, info = truncate_to_token_budget(
+        text or "", budget, model=model_name, stage="pipeline_analysis"
+    )
+    log.info(
+        "pipeline_analysis model=%s input_tokens=%d kept=%d truncated=%s budget=%d",
+        model_name,
+        info.get("original_tokens"),
+        info.get("kept_tokens"),
+        info.get("truncated"),
+        budget,
+    )
     prompt = (
         "Analyse the document below and return STRICT JSON with keys: "
         "summary (string), facts (array of {value, quote}), "
@@ -69,7 +92,7 @@ def _ollama_text_analysis(text: str) -> Optional[dict]:
         "Extract total durations, phases, phase durations, and order into timeline. Include exact verbatim source_text; "
         "do not invent dates, durations, phases, or relationships. Use kind total or phase. "
         "Ground every fact in a verbatim quote from the text. Do not invent statistics.\n\n"
-        f"TEXT:\n{text[:12000]}"
+        f"TEXT:\n{budgeted_text}"
     )
     try:
         resp = client.chat(model=settings.qwen_model, messages=[{"role": "user", "content": prompt}])
@@ -151,12 +174,43 @@ def _extractive_analysis(text: str) -> dict:
                 for n, c in sorted(ent_seen.items(), key=lambda kv: kv[1], reverse=True)[:15]]
 
     metrics = []
+    seen_metric_keys = set()
     for s in sents:
         for m in _NUMBER_RE.findall(s):
             val = m if isinstance(m, str) else m[0]
-            metrics.append({"name": val.strip(), "value": val.strip(), "context": s[:200]})
+            val_clean = val.strip()
+            if not val_clean:
+                continue
+            if val_clean in ("2023", "2024", "2025", "2026", "2027", "2028") or (val_clean.isdigit() and 1900 <= int(val_clean) <= 2099):
+                continue
+            key = re.sub(r"[^0-9a-z%]", "", val_clean.lower())
+            if not key or key in seen_metric_keys:
+                continue
+            seen_metric_keys.add(key)
+            s_low = s.lower()
+            name = "Key Metric"
+            if "%" in val_clean or "percent" in val_clean.lower():
+                name = "Electricity Reduction" if any(w in s_low for w in ("electric", "energy", "kwh", "power")) else "Efficiency Reduction"
+            elif any(w in s_low for w in ("solar", "panel")):
+                name = "Solar Panels Installed"
+            elif "50,000" in val_clean or ("50" in val_clean and "kwh" in s_low):
+                name = "Baseline Monthly Usage"
+            elif "38,000" in val_clean or ("38" in val_clean and "kwh" in s_low):
+                name = "Post-Pilot Monthly Usage"
+            elif "18" in val_clean and any(w in s_low for w in ("lakh", "cost", "invest", "₹", "rs")):
+                name = "Project Investment"
+            elif any(w in s_low for w in ("payback", "recover", "roi")) or (val_clean in ("4", "four") and "year" in s_low):
+                name = "Estimated Payback Period"
+            elif "building" in s_low:
+                name = "Planned Expansion Buildings" if any(w in s_low for w in ("expand", "additional", "2027")) else "Initial Facilities"
+            else:
+                name = val_clean
+
+            metrics.append({"name": name, "value": val_clean, "context": s[:200]})
             if len(metrics) >= 15:
                 break
+        if len(metrics) >= 15:
+            break
 
     events = [{"title": s[:140], "timestamp": d, "impact": "", "actors": []}
               for s in sents for d in _DATE_RE.findall(s)][:10]

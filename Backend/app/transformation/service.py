@@ -58,9 +58,10 @@ class FallbackGenerationProvider:
         self, prompt: str, context: TransformationContext, profile: TransformationProfile
     ) -> str:
         """Generate deterministic, fact-preserving text structured by profile requirements."""
+        from ..services.transformation.source_analyzer import analyze_source_content
+
         lines: List[str] = []
 
-        # Header title
         title_name = context.objective or profile.name
         lines.append(f"# {title_name}")
         lines.append("")
@@ -68,32 +69,65 @@ class FallbackGenerationProvider:
         source_text = context.source_content or ""
         citations_str = " ".join([c.citation_id for c in context.citations]) if context.citations else ""
 
+        profile_analysis = analyze_source_content(source_text, fallback_title=title_name)
+        facts = list(profile_analysis.findings or profile_analysis.key_facts)
+        metrics = list(profile_analysis.empirical_metrics)
+        overview_text = profile_analysis.summary or profile_analysis.subject
+        if profile_analysis.content_type == "instruction_only":
+            overview_text = f"Source specifies procedural requirements: {overview_text}"
+
+        used_fact_idx = 0
+
         # Map each required/expected section to content derived from source
         for sec in profile.expected_structure:
             sec_title = sec.replace("_", " ").title()
             lines.append(f"## {sec_title}")
 
-            if context.insufficient_evidence:
-                lines.append(f"[Insufficient evidence available for section '{sec_title}']")
+            if context.insufficient_evidence or (profile_analysis.has_insufficient_evidence and not facts):
+                lines.append(f"[Note: Insufficient evidence available in source for section '{sec_title}']")
                 lines.append("")
                 continue
 
-            if sec in ("overview", "executive_summary", "headline", "title", "header", "main_title", "issue_overview", "hook", "hook_intro", "slide_1_title", "translated_title", "subject_line"):
+            sec_lower = sec.lower()
+            if any(k in sec_lower for k in ("overview", "summary", "headline", "title", "header", "hook")):
                 if profile.output_type == "TRANSLATION":
-                    lines.append(f"Source Content Summary ({context.target_language or 'target'}): {source_text} {citations_str}".strip())
+                    lines.append(f"Source Content Summary ({context.target_language or 'target'}): {overview_text} {citations_str}".strip())
                 elif profile.output_type == "EMAIL_COMMUNICATION":
-                    lines.append(f"Subject: {title_name}")
+                    lines.append(f"Subject: {title_name}\n\n{overview_text} {citations_str}".strip())
                 else:
-                    lines.append(f"Key overview based on source content: {source_text} {citations_str}".strip())
+                    lines.append(f"{overview_text} {citations_str}".strip())
 
-            elif sec in ("key_findings", "quick_facts", "detailed_analysis", "key_points", "concise_facts", "situation", "key_facts", "policy_context", "key_information", "announcement_body", "segment_1_overview", "segment_2_details", "slide_2_overview", "slide_3_key_facts", "headline_stat", "data_callouts", "q1_overview", "q2_details", "translated_content", "body", "section_list"):
-                lines.append(f"Detailed factual analysis and findings: {source_text} {citations_str}".strip())
+            elif any(k in sec_lower for k in ("finding", "analysis", "point", "fact", "stat", "data", "body", "detail", "situation")):
+                sec_facts = []
+                if metrics and any(k in sec_lower for k in ("stat", "data", "metric")):
+                    sec_facts.extend([f"• {m.label}: {m.value}" for m in metrics[:3]])
+                if not sec_facts and facts:
+                    chunk = facts[used_fact_idx: used_fact_idx + 2]
+                    if not chunk:
+                        chunk = facts[:2]
+                    used_fact_idx += len(chunk)
+                    sec_facts.extend([f"• {f}" for f in chunk])
+                if not sec_facts:
+                    sec_facts.append(f"• {overview_text}")
 
-            elif sec in ("recommendations", "implication", "implications", "recommended_actions", "policy_recommendations", "action_items", "next_steps", "conclusion_call_to_action", "slide_4_deep_dive", "slide_5_conclusion", "key_takeaways", "q3_implications", "call_to_action", "evidence_summary", "key_takeaway", "conclusion", "closing", "sign_off"):
-                lines.append(f"Conclusion and action items derived strictly from source facts: {source_text} {citations_str}".strip())
+                content_body = "\n".join(sec_facts)
+                lines.append(f"{content_body} {citations_str}".strip())
+
+            elif any(k in sec_lower for k in ("recommend", "action", "implication", "next", "conclusion", "closing")):
+                rec_lines = []
+                if profile_analysis.recommendations:
+                    rec_lines.extend([f"• {r}" for r in profile_analysis.recommendations[:3]])
+                elif profile_analysis.limitations:
+                    rec_lines.extend([f"• Limitation noted: {l}" for l in profile_analysis.limitations[:2]])
+                    rec_lines.append("• Further empirical validation recommended prior to operational deployment.")
+                else:
+                    rec_lines.append(f"• Recommended action: Align strategic initiatives with {profile_analysis.subject.lower()}.")
+                content_body = "\n".join(rec_lines)
+                lines.append(f"{content_body} {citations_str}".strip())
 
             else:
-                lines.append(f"Section content: {source_text} {citations_str}".strip())
+                fallback_fact = facts[used_fact_idx % len(facts)] if facts else overview_text
+                lines.append(f"{fallback_fact} {citations_str}".strip())
 
             lines.append("")
 

@@ -56,14 +56,23 @@ class RAGGenerationEngine:
     def _call_ollama(self, prompt: Dict[str, str], settings: Any) -> Optional[str]:
         try:
             import ollama
+            try:
+                from ..core.token_budgets import estimate_tokens, resolve_output_budget
+
+                _np = int(resolve_output_budget("rag_answer", None))
+                _pt = int(estimate_tokens(str(prompt.get("system", "")) + str(prompt.get("user", ""))))
+            except Exception:
+                _np, _pt = 512, -1
+            _model = getattr(settings, "qwen_model", "qwen2.5:7b")
+            log.info("rag_generate model=%s prompt_tokens~%d num_predict=%d", _model, _pt, _np)
             client = ollama.Client(host=settings.ollama_base_url, timeout=15)
             resp = client.chat(
-                model=getattr(settings, "qwen_model", "qwen2.5:7b"),
+                model=_model,
                 messages=[
                     {"role": "system", "content": prompt["system"]},
                     {"role": "user", "content": prompt["user"]},
                 ],
-                options={"temperature": 0.2},
+                options={"temperature": 0.2, "num_predict": int(_np)},
             )
             return resp["message"]["content"].strip()
         except Exception as exc:

@@ -1,0 +1,133 @@
+GEN TRANSFORM AI — LONG DOCUMENT PIPELINE TEST
+Document ID: GTAI-TEST-001
+Document Type: Technical Project Assessment
+Version: 1.0
+Purpose: Test document ingestion, token budgeting, RAG retrieval, summarization, multi-format transformation, and factual consistency.
+
+1. EXECUTIVE CONTEXT
+
+A fictional organization, Northstar Digital Services, is piloting an AI-assisted content transformation platform called Gen Transform AI. The platform is intended to convert one source document into several communication deliverables, including an executive summary, LinkedIn post, short social media post, advisory brief, infographic specification, presentation outline, and video script.
+
+The platform's core requirement is that every deliverable must preserve the source's meaning, remain grounded in evidence, and be appropriate for its target audience and format. The system must distinguish factual source material from instructions that tell the AI how to process the material. Instructions such as “summarize this document” are not findings about the organization and must not be copied into the final advisory report as factual observations.
+
+The pilot team has identified three quality dimensions that must be evaluated separately:
+- Factual grounding: whether claims in an output can be traced to source evidence.
+- Transformation quality: whether the output is genuinely adapted to its intended format.
+- Completeness: whether important evidence is retained without inventing missing information.
+
+A high grounding score alone does not prove that an output is useful. An output can repeat source sentences accurately and still fail as a summary, social post, or presentation.
+
+2. PILOT SCOPE AND TIMELINE
+
+The fictional pilot began on 5 August 2026 and is scheduled to conclude on 30 October 2026. The assessment covers 120 source documents across three categories: policy documents, technical reports, and incident summaries. The planned distribution is 40 documents per category.
+
+The team will conduct an initial baseline test, a configuration update, and a final comparison. The baseline test is scheduled for 12 August 2026. The configuration update is planned for 2 September 2026. The final comparison is planned for 16 October 2026. These are planned dates, not evidence that the activities have already been completed.
+
+The pilot has a budget ceiling of ₹4,80,000. This is the approved planning ceiling for the fictional pilot, not a statement of actual expenditure. The team has allocated up to ₹1,80,000 for compute and infrastructure, ₹1,20,000 for engineering work, ₹80,000 for evaluation and testing, and ₹1,00,000 for contingency. These allocations total ₹4,80,000.
+
+3. CURRENT TECHNICAL CONFIGURATION
+
+The backend uses FastAPI. The application includes document ingestion, text extraction, chunking, embeddings, retrieval-augmented generation (RAG), a context-building stage, model inference, output validation, and export functions.
+
+The current configuration notes list the following code-level limits:
+- Default RAG context budget: 3,000 tokens.
+- Configured hard maximum for the RAG setting: 16,000 tokens.
+- ContextBuilder limit: 2,000 tokens.
+- One pipeline service truncates source text to 12,000 characters.
+- Another Qwen service truncates text to 16,000 characters.
+- DocLink chunk size: 1,800 characters.
+- Embedding configuration: 600-token chunks, 100-token overlap, and a configured maximum of 1,200 tokens.
+- Maximum upload size: 25 MB.
+- Student answer output budget: 2,048 new tokens.
+- One Ollama Qwen service uses a default num_predict value of 800.
+- Other pipeline calls use output limits of 1,024, 1,200, 1,500, 2,048, or 3,000 tokens.
+
+These figures describe application configuration notes and must be verified against the deployed code and runtime. They should not be treated as proof that a model actually receives or generates that many tokens. A request can be constrained by several stages, and an earlier stage may discard content before the model receives it.
+
+4. MODEL AND RUNTIME CONSIDERATIONS
+
+The recorded text model is Qwen3 4B. The recorded vision model is Gemma 3 4B. A Gemini 2.5 Flash fallback is listed in configuration. A Qwen2.5 0.5B Instruct model is used for a student-oriented feature. BAAI/bge-small-en-v1.5 is listed as the embedding model.
+
+The model's theoretical context window is not the same as the application's effective context budget. Effective capacity depends on the actual model artifact, runtime configuration, tokenizer, context-window settings, prompt overhead, reserved output tokens, hardware memory, and concurrent requests.
+
+The embedding model's tokenizer and maximum sequence length must be checked directly. If an embedding request exceeds the supported input length, the implementation may truncate, reject, or otherwise process the input according to its configuration. The engineering team must verify the actual behavior rather than assume that a configured 1,200-token chunk is embedded in full.
+
+The team must not set every limit to the largest theoretical model value. Larger context settings may increase memory usage and latency, and they do not automatically improve retrieval relevance or output quality.
+
+5. OBSERVED PROBLEMS
+
+During a preliminary test, the executive summary largely repeated the source instead of condensing its key findings. The LinkedIn post included procedural instructions that belonged to the prompt rather than the intended public message. The X thread split source sentences into separate posts without developing a meaningful narrative. The advisory brief presented generic recommendations that were not clearly supported by evidence. The infographic displayed the number of extracted claims as if it were a useful headline metric. The presentation repeated similar content across multiple slides.
+
+The interface reported 100% grounding and four verified facts. That result only describes the validation status reported by the current implementation; it does not independently establish that the content was useful, complete, or properly transformed. The evaluation must determine whether the score is correctly defined and whether it distinguishes evidence support from writing quality.
+
+The team has not yet established that every observed issue is caused by token limits. Possible causes include prompt design, source/instruction separation, retrieval quality, agent orchestration, output schemas, parsing, and missing quality gates. The root cause must be established through code inspection and controlled tests.
+
+6. REQUIRED TOKEN-BUDGETING CHANGES
+
+The engineering team should centralize input and output budgets in a shared configuration policy. Each model and task should have an explicit budget based on verified runtime capabilities.
+
+Prompt construction should use token-aware budgeting rather than arbitrary character slicing. The budget should account for system instructions, user instructions, source content, retrieved evidence, conversation context, and reserved output tokens. If the request exceeds the budget, the system should use a documented strategy such as relevant retrieval, hierarchical summarization, or an explicit validation error. It should not silently remove the beginning or end of the source without recording the action.
+
+The ContextBuilder and RAG configuration must work together. A larger RAG maximum is not useful if the context builder silently reduces the final context to a smaller value. Logs should record the selected model, estimated input tokens, retrieved evidence size, configured context budget, truncation or summarization events, requested output budget, actual generated token count when available, and termination reason.
+
+Output budgets should vary by deliverable. A short social post needs a small budget, while a detailed advisory brief may need more. The system should detect incomplete output where possible and avoid treating a token-limit termination as a successful, complete deliverable.
+
+7. CHUNKING AND RETRIEVAL
+
+The system should preserve document structure where practical. Headings, section boundaries, tables, lists, dates, and named entities can be important to later retrieval. Chunking should avoid separating a critical qualification from the claim it qualifies.
+
+The team should test several chunk sizes against retrieval relevance and source coverage rather than assume that one size is best for every document. Embedding chunks must respect the actual embedding model's supported token length. Chunk overlap should be sufficient to preserve context without creating excessive duplicate retrieval results.
+
+Every retrieved fact used in an output should retain provenance, such as a source document identifier and section or chunk reference. If the system cannot find evidence for a requested conclusion, it should state that the source does not provide enough information rather than inventing a number, date, risk, or recommendation.
+
+8. OUTPUT-SPECIFIC EXPECTATIONS
+
+Executive summary: State the subject, purpose, main findings, implications, and supported recommendations concisely. Remove procedural instructions and repeated statements.
+
+LinkedIn post: Write a natural professional post with a relevant opening, a few distinct insights, and an appropriate conclusion. Do not copy the transformation prompt into the post.
+
+X post or thread: Produce a concise standalone post or a connected thread. Each thread item should add a distinct point and obey the configured platform length policy.
+
+Advisory brief: Separate context, verified findings, risks, recommendations, and implementation considerations. Mark unknowns and avoid unsupported policy claims.
+
+Infographic specification: Provide a headline, visual hierarchy, concise claims, and layout guidance. Use only source-supported metrics. If no meaningful numerical metric exists, do not invent one.
+
+Presentation: Create a logical narrative with distinct slides, concise bullets, and useful speaker notes. The number of slides should match the source's substance rather than a fixed count.
+
+Video script: Write narration that explains the key ideas in a logical sequence, with optional scene directions and on-screen text. Do not simply read the original source verbatim.
+
+9. EVALUATION PLAN
+
+The pilot will evaluate the following measures:
+- Source coverage: proportion of important source facts represented in the appropriate deliverable.
+- Claim support: proportion of factual claims with traceable source evidence.
+- Semantic fidelity: whether the original meaning and qualifications are preserved.
+- Redundancy: repeated content that does not add value.
+- Format compliance: whether each output follows its intended structure and length constraints.
+- Completion status: whether the model completed the response or stopped because of a token limit or error.
+- Retrieval relevance: whether the retrieved passages support the task being performed.
+- Latency: elapsed time for ingestion, retrieval, generation, and validation.
+
+The evaluation must report the measurement method and test sample. It must not claim a perfect score merely because every output sentence overlaps with source text. Automated tests should include substantive reports, instruction-only inputs, long documents, multilingual text, numerical data, ambiguous claims, and conflicting evidence.
+
+10. ACCEPTANCE CRITERIA
+
+The pilot is considered technically ready for review when:
+1. The application records where content is truncated, summarized, or omitted.
+2. Context budgets are consistent across RAG, ContextBuilder, prompt construction, and model inference.
+3. Embedding inputs comply with the verified embedding model's token limit.
+4. Output budgets are configurable by task and model.
+5. The system distinguishes grounding from transformation quality.
+6. Repetitive or incomplete outputs are flagged rather than automatically marked successful.
+7. Every generated factual claim can be traced to evidence when the source supports it.
+8. Existing API contracts and export functionality continue to work.
+9. Automated tests cover normal, oversized, incomplete, and evidence-poor inputs.
+10. The final report distinguishes measured results from assumptions and planned work.
+
+11. QUESTIONS FOR THE FINAL TECHNICAL REPORT
+
+Based only on the information in this document, identify the most urgent configuration issues, explain why model-theoretical context limits do not determine effective application limits, recommend a safe sequence for implementing fixes, and propose a test matrix for validating the changes.
+
+Clearly distinguish verified facts stated in this document from hypotheses that still require code inspection. Do not claim that the planned pilot activities have occurred, do not invent test results, and do not present the fictional organization's figures as real-world statistics.
+
+END OF TEST DOCUMENT

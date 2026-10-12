@@ -13,7 +13,8 @@ import {
   Database,
   RefreshCw,
   Server,
-  HardDrive
+  HardDrive,
+  Wand2
 } from 'lucide-react';
 import { ViewState } from '../../types';
 import { useWorkspace } from '../../context/WorkspaceContext';
@@ -42,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'outputs' as ViewState, label: 'Outputs', icon: Layers, count: outputsCount },
     { id: 'agents' as ViewState, label: 'AI Agents', icon: Bot },
     { id: 'mcp' as ViewState, label: 'MCP Integrations', icon: Share2 },
+    { id: 'image_studio' as ViewState, label: 'Image Studio', icon: Wand2, badge: 'AI' },
     { id: 'settings' as ViewState, label: 'Settings', icon: Settings },
   ];
 

@@ -4,6 +4,15 @@ from __future__ import annotations
 import os
 from pydantic import BaseModel, Field
 
+from ..core.token_budgets import RAG_HARD_MAX_TOKENS, get_token_budget_config
+
+
+def _default_max_context_tokens() -> int:
+    try:
+        return int(get_token_budget_config().rag_max_context_tokens)
+    except Exception:
+        return int(os.getenv("RAG_MAX_CONTEXT_TOKENS", "3000"))
+
 
 class OptimizationConfig(BaseModel):
     """Configuration parameters for Phase 6 QUBO evidence selection optimization."""
@@ -24,7 +33,12 @@ class OptimizationConfig(BaseModel):
     # Candidate budget limits
     max_candidates: int = Field(50, ge=1, le=200, description="Max input candidates for QUBO pool")
     default_target_k: int = Field(5, ge=1, le=50, description="Default target selection count K")
-    max_context_tokens: int = Field(3000, ge=100, le=16000, description="Max context token budget")
+    max_context_tokens: int = Field(
+        default_factory=_default_max_context_tokens,
+        ge=100,
+        le=RAG_HARD_MAX_TOKENS,
+        description="Max context token budget (centralized: RAG_MAX_CONTEXT_TOKENS, hard cap 16000)",
+    )
 
     # Mathematical QUBO Objective Function Weights
     relevance_weight: float = Field(

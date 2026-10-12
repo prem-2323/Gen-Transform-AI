@@ -137,11 +137,15 @@ class DeliverableRecord(BaseModel):
     citations: List[Dict[str, Any]] = Field(default_factory=list)
     status: Literal["completed", "failed", "generating", "validating"] = "completed"
     validation: Dict[str, Any] = Field(default_factory=lambda: {"valid": True})
+    quality: Optional[Dict[str, Any]] = None
+    qualityScore: Optional[float] = None
+    groundingScore: Optional[float] = None
+    qualityStatus: Optional[str] = None
     error: Optional[Dict[str, Any]] = None
     createdAt: str
     updatedAt: str
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
 
 class DeliverablesModel(BaseModel):

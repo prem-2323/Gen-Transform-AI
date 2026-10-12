@@ -12,13 +12,26 @@ from __future__ import annotations
 
 import logging
 import re
+import os
 from typing import Optional
 
 log = logging.getLogger("gen-transform.text.qwen_service")
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "qwen3:4b"
-DEFAULT_NUM_PREDICT = 800
+OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/") + "/api/generate"
+DEFAULT_MODEL = os.getenv("TEXT_MODEL") or "qwen2.5:3b"
+
+
+
+def _default_num_predict() -> int:
+    try:
+        import os
+
+        return max(16, int(os.getenv("QWEN_DEFAULT_NUM_PREDICT", "800")))
+    except (TypeError, ValueError):
+        return 800
+
+
+DEFAULT_NUM_PREDICT = _default_num_predict()
 DEFAULT_TIMEOUT = 120.0
 
 
@@ -37,15 +50,51 @@ def _strip_think(raw: str) -> str:
 def generate_with_qwen(
     prompt: str,
     model: str = DEFAULT_MODEL,
-    num_predict: int = DEFAULT_NUM_PREDICT,
+    num_predict: Optional[int] = None,
     timeout: float = DEFAULT_TIMEOUT,
     temperature: float = 0.3,
+    deliverable: Optional[str] = None,
 ) -> str:
-    """Send a prompt to local Qwen (Ollama) and return the cleaned text output.
+    """Send a prompt to local Ollama Qwen and return cleaned text.
 
-    Raises:
-        QwenServiceError: If Ollama is unreachable, times out, or errors.
+    ``num_predict`` defaults to the centralized ``QWEN_DEFAULT_NUM_PREDICT``
+    (800); pass ``deliverable`` (e.g. ``"image_prompt"``) to resolve a
+    per-deliverable budget. Signature remains backward compatible:
+    positional ``num_predict`` still works; ``None`` means default.
     """
+    if num_predict is None:
+        effective_predict = _default_num_predict()
+        # Per-deliverable override when requested without explicit budget.
+        if deliverable:
+            try:
+                import sys
+                from pathlib import Path
+
+                _backend = Path(__file__).resolve().parent.parent
+                if str(_backend) not in sys.path:
+                    sys.path.insert(0, str(_backend))
+                from app.core.token_budgets import resolve_output_budget
+
+                effective_predict = resolve_output_budget(deliverable, None)
+            except Exception:
+                pass
+    else:
+        try:
+            effective_predict = max(16, int(num_predict))
+        except (TypeError, ValueError):
+            effective_predict = _default_num_predict()
+    try:
+        _words = len((prompt or "").split())
+        _chars = len(prompt or "")
+        log.info(
+            "text.qwen_generate model=%s prompt_chars=%d prompt_words=%d num_predict=%d",
+            model,
+            _chars,
+            _words,
+            effective_predict,
+        )
+    except Exception:
+        pass
     try:
         import requests
     except ImportError as exc:  # pragma: no cover - requests ships with backend deps
@@ -57,7 +106,7 @@ def generate_with_qwen(
         "stream": False,
         "think": False,  # disable Qwen3 extended thinking for clean output
         "options": {
-            "num_predict": int(num_predict),
+            "num_predict": int(effective_predict),
             "temperature": float(temperature),
         },
     }

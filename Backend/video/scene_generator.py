@@ -225,8 +225,31 @@ def generate_video_scenes(
         QwenServiceError: If Ollama is unreachable or times out.
         ValueError:       If Qwen's output cannot be parsed / validated.
     """
+    try:
+        import sys as _sys
+        from pathlib import Path as _P
+
+        _b = _P(__file__).resolve().parent.parent
+        if str(_b) not in _sys.path:
+            _sys.path.insert(0, str(_b))
+        from app.core.token_budgets import resolve_output_budget as _rob
+        from app.core.token_budgets import truncate_to_token_budget as _trunc
+
+        _np_scene = int(_rob("scene", None))
+        _src, _info = _trunc((content or "").strip(), 3000, model=MODEL_NAME, stage="scene_gen")
+        if _info.get("truncated"):
+            import logging as _lg
+
+            _lg.getLogger(__name__).warning(
+                "scene_gen source truncated original=%s kept=%s",
+                _info.get("original_tokens"),
+                _info.get("kept_tokens"),
+            )
+    except Exception:
+        _np_scene = 2000
+        _src = (content or "").strip()
     prompt = SCENE_PROMPT_TEMPLATE.format(
-        source_text=content.strip(),
+        source_text=_src,
         target_duration=target_duration,
         pacing=pacing,
         scene_count=DEFAULT_SCENE_COUNT,
@@ -239,7 +262,7 @@ def generate_video_scenes(
         "think":  False,          # disable extended thinking → pure JSON output
         "format": "json",
         "options": {
-            "num_predict": 2000,  # enough for 8 detailed scenes
+            "num_predict": _np_scene,
             "temperature": 0.3,   # low temperature → less hallucination
         },
     }

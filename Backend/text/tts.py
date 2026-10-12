@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from app.services.audio.tts_service import generate_audio
+from app.services.audio.tts_service import generate_audio as _backend_generate_audio
 
 
 async def generate_audio(
@@ -24,4 +24,5 @@ async def generate_audio(
     a minimal valid silent MP3, so the video pipeline can always complete.
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
-    return await generate_audio(text=text, output_file=output_file, voice=voice, rate=rate)
+    return await _backend_generate_audio(text=text, output_file=output_file, voice=voice, rate=rate)
+

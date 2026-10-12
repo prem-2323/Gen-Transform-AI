@@ -144,6 +144,7 @@ echo [*] Automatically Launching All 4 Terminals...
 echo ==============================================================================
 
 call :CHECK_AND_INSTALL_DEPS_IF_MISSING
+call :FIX_FORGE_NUMPY
 call :START_OLLAMA
 call :START_SD_FORGE
 call :START_BACKEND
@@ -163,7 +164,7 @@ echo   [4] SD Forge Image Gen:    http://localhost:7860  (Running in Forge termi
 echo   ----------------------------------------------------------------------------
 echo   * Swagger API Docs:      http://localhost:8000/docs
 echo   * Backend Health Check:  http://localhost:8000/health
-echo   * FFmpeg Engine:         Available (Video & Audio Pipeline Ready)
+echo   * FFmpeg Engine:         Available (Video and Audio Pipeline Ready)
 echo ==============================================================================
 echo.
 echo [*] Opening Web Application in your browser (within 3 seconds)...
@@ -269,6 +270,31 @@ if %ERRORLEVEL% NEQ 0 (
 python "%ROOT_DIR%Backend\download_model.py"
 exit /b 0
 
+:FIX_FORGE_NUMPY
+:: ------------------------------------------------------------------
+:: SD Forge NumPy 1.x compatibility fix (torch 2.3.1 + scikit-image 0.21
+:: are built against NumPy 1.x; NumPy 2.x crashes with
+:: "ValueError: numpy.dtype size changed" / "_ARRAY_API not found").
+:: Forge pins numpy==1.26.2 in requirements_versions.txt.
+:: ------------------------------------------------------------------
+if not defined FORGE_DIR exit /b 0
+if not exist "!FORGE_DIR!\venv\Scripts\python.exe" exit /b 0
+echo [*] Checking SD Forge NumPy compatibility...
+"!FORGE_DIR!\venv\Scripts\python.exe" -c "import numpy; assert numpy.__version__.startswith('1')" >nul 2>&1
+if errorlevel 1 (
+    echo   [FIX] SD Forge has NumPy 2.x - downgrading to 1.26.4 for torch/skimage compat...
+    "!FORGE_DIR!\venv\Scripts\python.exe" -m pip install "opencv-contrib-python==4.8.1.78" "numpy==1.26.4" --force-reinstall --no-cache-dir
+    if errorlevel 1 (
+        echo   [WARNING] SD Forge NumPy auto-fix failed.
+        echo             Run manually: "!FORGE_DIR!\venv\Scripts\python.exe" -m pip install "numpy==1.26.4" "opencv-contrib-python==4.8.1.78"
+    ) else (
+        echo   [OK] SD Forge NumPy fix applied: numpy 1.26.4
+    )
+) else (
+    echo   [OK] SD Forge NumPy 1.x is active and compatible.
+)
+exit /b 0
+
 
 :START_OLLAMA
 if %HAS_OLLAMA% EQU 1 (
@@ -287,10 +313,10 @@ if %HAS_FORGE% EQU 1 (
             start "SD Forge Image API (Port 7860)" /D "!FORGE_DIR!" cmd /k "call start-image-api.bat"
         ) else if exist "!FORGE_DIR!\webui-user.bat" (
             echo [*] Launching SD Forge WebUI Terminal on Port 7860...
-            start "SD Forge WebUI (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--api --listen --port 7860 && call webui-user.bat"
+            start "SD Forge WebUI (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--skip-python-version-check --api --listen --port 7860 && call webui-user.bat"
         ) else if exist "!FORGE_DIR!\webui.bat" (
             echo [*] Launching SD Forge WebUI Terminal on Port 7860...
-            start "SD Forge WebUI Terminal (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--api --listen --port 7860 && call webui.bat"
+            start "SD Forge WebUI Terminal (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--skip-python-version-check --api --listen --port 7860 && call webui.bat"
         )
     )
 ) else (
@@ -300,7 +326,11 @@ exit /b 0
 
 :START_BACKEND
 echo [*] Launching Backend API Server Terminal on Port 8000...
-start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "set PATH=%ROOT_DIR%bin;!PATH! && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+if exist "%ROOT_DIR%.venv\Scripts\activate.bat" (
+    start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "call "%ROOT_DIR%.venv\Scripts\activate.bat" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+) else (
+    start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+)
 exit /b 0
 
 :START_FRONTEND

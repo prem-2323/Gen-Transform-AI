@@ -45,6 +45,7 @@ pyttsx3>=2.90
 
 # --- Deliverable Document & Media Exporting ---
 reportlab>=4.0.0
+matplotlib>=3.8.0
 
 # --- Automated Testing & Concurrency ---
 pytest>=8.0.0

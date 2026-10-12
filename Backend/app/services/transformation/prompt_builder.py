@@ -274,7 +274,13 @@ def build_transformation_prompt(
 
     # If video_script format template has placeholder variables, substitute them
     if rule_key == "video_script" and "{source_content}" in instruction_text:
-        src_text = source_content or uckr.get("summary") or context[:2000]
+        _raw_src = source_content or uckr.get("summary") or context
+        try:
+            from ...core.token_budgets import truncate_to_token_budget as _trunc
+
+            src_text, _ = _trunc(str(_raw_src or "")[:8000], 1500, model="transform", stage="video_src")
+        except Exception:
+            src_text = str(_raw_src or "")[:2000]
         instruction_text = instruction_text.format(
             source_content=src_text,
             uckr_facts=context,

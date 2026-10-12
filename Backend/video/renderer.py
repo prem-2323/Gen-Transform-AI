@@ -10,8 +10,15 @@ Step 13 - Burn subtitles into the final video -> final_video_subtitled.mp4.
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
+
+# Ensure project bin directory is in PATH for ffmpeg and ffprobe
+_project_bin = Path(__file__).resolve().parent.parent.parent / "bin"
+if _project_bin.is_dir() and str(_project_bin) not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_project_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+
 
 
 # -- Paths ----------------------------------------------------------------------

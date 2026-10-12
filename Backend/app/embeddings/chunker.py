@@ -12,6 +12,15 @@ from .config import EmbeddingConfig, default_embedding_config
 from .metadata import compute_content_hash, generate_deterministic_chunk_id
 from .models import SemanticChunk
 
+try:
+    from ..core.token_budgets import (
+        ensure_embedding_budget as _ensure_embedding_budget,
+    )
+    from ..core.token_budgets import estimate_tokens as _estimate_tokens_central
+except Exception:  # pragma: no cover - fallback when core not importable
+    _ensure_embedding_budget = None  # type: ignore
+    _estimate_tokens_central = None  # type: ignore
+
 # Heading regex: Markdown headers (#, ##, ###), Section labels, or ALL-CAPS titles
 HEADING_RE = re.compile(
     r"^(?:#{1,6}\s+|SECTION\s+\d+:?|CHAPTER\s+\d+:?|[A-Z0-9\s\-_]{4,60}:?\s*$)",
@@ -22,9 +31,36 @@ SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])")
 
 
 def estimate_token_count(text: str) -> int:
-    """Approximate token count from whitespace words & character heuristics."""
+    """Approximate token count (centralized, multilingual-safe when available)."""
+    if _estimate_tokens_central is not None:
+        try:
+            return int(_estimate_tokens_central(text))
+        except Exception:
+            pass
     words = (text or "").split()
     return max(1, int(len(words) * 1.3)) if words else 0
+
+
+def _fit_chunk_to_embedding_budget(text: str, config: EmbeddingConfig) -> str:
+    """Clamp a chunk to the embedding model's sequence length (with logging)."""
+    if _ensure_embedding_budget is None:
+        return text
+    try:
+        max_tok = int(getattr(config, "embedding_max_tokens", 512))
+        reserve = int(getattr(config, "embedding_reserve_tokens", 2))
+    except (TypeError, ValueError):
+        max_tok, reserve = 512, 2
+    fitted, info = _ensure_embedding_budget(text, max_tokens=max_tok, reserve=reserve)
+    if info.get("truncated"):
+        import logging as _logging
+
+        _logging.getLogger("gen-transform.embeddings.chunker").warning(
+            "chunk truncated for embedding limit original=%s kept=%s max=%s",
+            info.get("original_tokens"),
+            info.get("kept_tokens"),
+            max_tok,
+        )
+    return fitted
 
 
 class SemanticChunker:
@@ -217,6 +253,32 @@ class SemanticChunker:
                         )
                     )
                     global_chunk_idx += 1
+
+        # Safety net: enforce embedding sequence length in token space.
+        # Defaults (600/1200 chars) already fit 512 tokens; this only triggers
+        # for custom configs or pathological paragraphs. IDs are preserved for
+        # provenance; text/counts are clamped with a warning.
+        try:
+            usable = max(
+                16,
+                int(getattr(self.config, "embedding_max_tokens", 512))
+                - int(getattr(self.config, "embedding_reserve_tokens", 2)),
+            )
+        except (TypeError, ValueError):
+            usable = 510
+        for chunk in chunks:
+            try:
+                n_tok = int(estimate_token_count(chunk.text))
+            except Exception:
+                continue
+            if n_tok > usable:
+                fitted = _fit_chunk_to_embedding_budget(chunk.text, self.config)
+                chunk.text = fitted
+                chunk.char_count = len(fitted)
+                try:
+                    chunk.token_count = int(estimate_token_count(fitted))
+                except Exception:
+                    chunk.token_count = usable
 
         # Attach page_start / page_end pointers if page_texts mapping provided
         if page_texts:

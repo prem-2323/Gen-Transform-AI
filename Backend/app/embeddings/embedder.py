@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import hashlib
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
 
@@ -140,6 +141,27 @@ class SentenceTransformerEmbeddingModel(EmbeddingModelInterface):
         if not clean:
             return [0.0] * self._dim
 
+        # Defensive: never send more than the model's sequence length.
+        try:
+            from ..core.token_budgets import ensure_embedding_budget
+
+            settings = get_settings()
+            max_tok = int(getattr(settings, "embedding_model", "BAAI/bge-small-en-v1.5") and 512 or 512)
+            try:
+                max_tok = int(os.getenv("EMBEDDING_MAX_TOKENS", "512"))
+            except (TypeError, ValueError):
+                max_tok = 512
+            clean, info = ensure_embedding_budget(clean, max_tokens=max_tok)
+            if info.get("truncated"):
+                log.warning(
+                    "embed_text truncated original=%s kept=%s max=%s",
+                    info.get("original_tokens"),
+                    info.get("kept_tokens"),
+                    max_tok,
+                )
+        except Exception:
+            pass
+
         vec = self._model.encode(
             clean,
             normalize_embeddings=self._normalize,
@@ -159,6 +181,30 @@ class SentenceTransformerEmbeddingModel(EmbeddingModelInterface):
         b_size = batch_size or getattr(settings, "embedding_batch_size", 16)
 
         cleaned_texts = [t if (t and t.strip()) else " " for t in texts]
+        # Defensive per-item clamp to the embedding sequence length.
+        try:
+            from ..core.token_budgets import ensure_embedding_budget as _eeb
+
+            try:
+                _max = int(os.getenv("EMBEDDING_MAX_TOKENS", "512"))
+            except (TypeError, ValueError):
+                _max = 512
+            clamped: List[str] = []
+            for _t in cleaned_texts:
+                try:
+                    _c, _info = _eeb(_t, max_tokens=_max)
+                    if _info.get("truncated"):
+                        log.warning(
+                            "embed_batch item truncated original=%s kept=%s",
+                            _info.get("original_tokens"),
+                            _info.get("kept_tokens"),
+                        )
+                    clamped.append(_c)
+                except Exception:
+                    clamped.append(_t)
+            cleaned_texts = clamped
+        except Exception:
+            pass
 
         vecs = self._model.encode(
             cleaned_texts,

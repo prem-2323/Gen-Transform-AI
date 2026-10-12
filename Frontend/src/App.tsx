@@ -21,6 +21,7 @@ import { ProjectsView } from './components/pages/ProjectsView';
 import { OutputsView } from './components/pages/OutputsView';
 import { AgentsView } from './components/pages/AgentsView';
 import { McpView } from './components/pages/McpView';
+import { ImageStudioView } from './components/pages/ImageStudioView';
 import { SettingsView } from './components/pages/SettingsView';
 import { UckrPanel } from './components/uckr/UckrPanel';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext';
@@ -466,6 +467,10 @@ function AppContent() {
           {currentView === 'agents' && <AgentsView />}
 
           {currentView === 'mcp' && <McpView onShowToast={addToast} />}
+
+          {currentView === 'image_studio' && (
+            <ImageStudioView onShowToast={addToast} />
+          )}
 
           {currentView === 'settings' && (
             <SettingsView

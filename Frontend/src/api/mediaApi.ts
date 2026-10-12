@@ -27,6 +27,7 @@ export interface GeneratedImageResponse {
 export interface SceneImagesResponse {
   status: string;
   images: GeneratedImageResponse[];
+  scenes?: Array<{ scene: number; prompt: string }>;
 }
 
 export interface PlannedScene {
@@ -108,6 +109,35 @@ export interface ImageRequestPayload {
   width?: number;
   height?: number;
   steps?: number;
+  allow_placeholder?: boolean;
+}
+
+export interface EnhancePromptPayload {
+  text: string;
+  style?: string;
+  negative_prompt?: string;
+  aspect_ratio?: string;
+}
+
+export interface EnhancePromptResponse {
+  status: string;
+  enhanced_prompt: string;
+  negative_prompt: string;
+  subject: string;
+  agent: string;
+  llm_used: boolean;
+  warning?: string | null;
+}
+
+export interface InfographicRenderPayload {
+  key_message: string;
+  key_statistics: Array<{ value: string; label: string; subtext: string }>;
+  supporting_points: Array<{ title: string; description: string }>;
+  call_to_action: string;
+  layout: string;
+  visual_style: string;
+  width?: number;
+  height?: number;
 }
 
 // ── URL helpers ──────────────────────────────────────────────────────────────
@@ -134,17 +164,44 @@ export interface ForgeStatusResponse {
   forge_url: string;
   online: boolean;
   message: string;
+  latency_ms?: number;
+}
+
+async function fetchWithTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fn(controller.signal);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(timeoutMessage);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const imageStudioApi = {
   getStatus: (): Promise<ForgeStatusResponse> =>
     workspaceFetch('/api/image-studio/status'),
 
-  generate: (payload: ImageRequestPayload): Promise<GeneratedImageResponse> =>
-    workspaceFetch('/api/image-studio/generate-image', {
+  enhancePrompt: (payload: EnhancePromptPayload): Promise<EnhancePromptResponse> =>
+    workspaceFetch('/api/image-studio/enhance-prompt', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  generate: (payload: ImageRequestPayload, timeoutMs = 300_000): Promise<GeneratedImageResponse> =>
+    fetchWithTimeout(
+      (signal) => workspaceFetch('/api/image-studio/generate-image', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal,
+      }),
+      timeoutMs,
+      'Image generation timed out. Forge may be overloaded — try fewer steps or a smaller resolution.',
+    ),
 
   generateSceneImages: (
     script: string | Record<string, unknown>,
@@ -163,6 +220,20 @@ export const imageStudioApi = {
       body: form,
     });
   },
+
+  generateInfographic: (
+    payload: InfographicRenderPayload,
+    timeoutMs = 60_000,
+  ): Promise<GeneratedImageResponse> =>
+    fetchWithTimeout(
+      (signal) => workspaceFetch('/api/image-studio/generate-infographic', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal,
+      }),
+      timeoutMs,
+      'Infographic rendering timed out. Backend may be busy — try again.',
+    ),
 };
 
 // ── Video endpoints ──────────────────────────────────────────────────────────

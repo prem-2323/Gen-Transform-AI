@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
-import { 
-  BarChart3, 
-  Download, 
-  Edit3, 
-  Sparkles, 
-  CheckCircle2, 
-  Layers, 
-  Cpu, 
-  ShieldAlert, 
-  Network, 
-  KeyRound, 
+import {
+  BarChart3,
+  Download,
+  Edit3,
+  Sparkles,
+  CheckCircle2,
+  Layers,
+  Cpu,
+  ShieldAlert,
+  Network,
+  KeyRound,
   Zap,
   Compass,
   ShieldCheck,
   RefreshCw,
-  Palette
+  Palette,
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { InfographicDeliverable } from '../../../types';
 import { StatusBadge } from '../../common/StatusBadge';
+import { imageStudioApi, imageFileUrl } from '../../../api/mediaApi';
 
 interface InfographicCardProps {
   deliverable: InfographicDeliverable;
@@ -32,6 +35,9 @@ export const InfographicCard: React.FC<InfographicCardProps> = ({
 }) => {
   const [layout, setLayout] = useState(deliverable.layoutRecommendation);
   const [style, setStyle] = useState(deliverable.visualStyle);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [pngUrl, setPngUrl] = useState<string | null>(null);
+  const [pngMeta, setPngMeta] = useState<string | null>(null);
 
   const layouts: ('Vertical' | 'Horizontal' | 'Timeline' | 'Process' | 'Comparison')[] = [
     'Vertical',
@@ -48,8 +54,54 @@ export const InfographicCard: React.FC<InfographicCardProps> = ({
     'Technology'
   ];
 
-  const handleGenerateVisual = () => {
-    onShowToast('Waiting for Backend', 'Visual synthesis will run on the backend once connected. Layout preferences are saved.', 'info');
+  const handleGenerateVisual = async () => {
+    if (isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const res = await imageStudioApi.generateInfographic({
+        key_message: deliverable.keyMessage,
+        key_statistics: (deliverable.keyStatistics || []).map((s) => ({
+          value: s.value,
+          label: s.label,
+          subtext: s.subtext,
+        })),
+        supporting_points: (deliverable.supportingPoints || []).map((p) => ({
+          title: p.title,
+          description: p.description,
+        })),
+        call_to_action: deliverable.callToAction,
+        layout,
+        visual_style: style,
+        width: 1200,
+        height: 800,
+      });
+      const url = imageFileUrl(res.filename);
+      setPngUrl(url);
+      setPngMeta(`${res.width} × ${res.height} • matplotlib PNG • ${res.generation_time}s`);
+      onShowToast('Infographic Rendered', `Matplotlib PNG ready (${res.width}×${res.height} in ${res.generation_time}s). No Forge/GPU needed.`, 'success');
+    } catch (err: any) {
+      const msg = err?.message || 'Backend unreachable. Start backend on :8000 (python -m uvicorn app.main:app --port 8000).';
+      onShowToast('Render Failed', msg, 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadPng = async () => {
+    if (!pngUrl) return;
+    try {
+      const resp = await fetch(pngUrl);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Infographic_${layout}_${style}_${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      onShowToast('Downloaded', 'Matplotlib infographic exported as PNG.', 'success');
+    } catch {
+      window.open(pngUrl, '_blank');
+    }
   };
 
   const handleDownloadSvg = () => {
@@ -112,14 +164,38 @@ export const InfographicCard: React.FC<InfographicCardProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={handleGenerateVisual}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-            title="Visual synthesis runs on the backend once connected"
+            disabled={isGenerating}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-purple-600/20"
+            title="Render matplotlib PNG on the backend (no Forge/GPU needed)"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Waiting for Backend</span>
+            {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            <span>{isGenerating ? 'Rendering…' : pngUrl ? 'Regenerate PNG' : 'Generate PNG'}</span>
           </button>
         </div>
       </div>
+
+      {/* Matplotlib PNG result — replaces the old "Waiting for Backend" placeholder */}
+      {pngUrl && (
+        <div className="rounded-xl overflow-hidden border border-purple-500/30 bg-[#070b14] shadow-2xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-800 bg-slate-900/60">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Matplotlib Rendered Infographic</span>
+            </span>
+            <span className="font-mono text-[10px] text-slate-400">{pngMeta}</span>
+          </div>
+          <img src={pngUrl} alt="Matplotlib infographic" className="w-full h-auto block" />
+          <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-slate-800">
+            <button
+              onClick={handleDownloadPng}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PNG</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Two Column Layout: Left side Visual Preview, Right side Content & Settings */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

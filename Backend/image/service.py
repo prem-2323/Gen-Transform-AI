@@ -36,6 +36,7 @@ def generate_and_save_image(
     steps: int = 10,
     mode: str = "fast",
     prefix: str = "image",
+    allow_placeholder: bool = True,
 ) -> Tuple[str, float, str]:
     image_bytes, generation_time, device = generate_image_bytes(
         prompt=prompt,
@@ -44,6 +45,7 @@ def generate_and_save_image(
         height=height,
         steps=steps,
         mode=mode,
+        allow_placeholder=allow_placeholder,
     )
     filename = save_image(image_bytes, prefix)
     return filename, generation_time, device

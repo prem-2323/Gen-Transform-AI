@@ -21,7 +21,26 @@ DEFAULT_ADAPTER_PATH = os.getenv(
     str(Path(__file__).resolve().parent.parent.parent / "outputs" / "distillation" / "student")
 )
 DEFAULT_DEVICE_SETTING = os.getenv("STUDENT_DEVICE", "auto")
-DEFAULT_MAX_NEW_TOKENS = int(os.getenv("STUDENT_MAX_NEW_TOKENS", "2048"))
+
+
+def _central_default_max_tokens() -> int:
+    try:
+        import sys as _sys
+
+        _backend = Path(__file__).resolve().parent.parent.parent.parent
+        if str(_backend) not in _sys.path:
+            _sys.path.insert(0, str(_backend))
+        from app.core.token_budgets import get_token_budget_config
+
+        return int(get_token_budget_config().student_max_new_tokens)
+    except Exception:
+        try:
+            return int(os.getenv("STUDENT_MAX_NEW_TOKENS", "2048"))
+        except (TypeError, ValueError):
+            return 2048
+
+
+DEFAULT_MAX_NEW_TOKENS = _central_default_max_tokens()
 DEFAULT_TEMPERATURE = float(os.getenv("STUDENT_TEMPERATURE", "0.1"))
 DEFAULT_TOP_P = float(os.getenv("STUDENT_TOP_P", "0.9"))
 
@@ -110,8 +129,25 @@ class StudentInferenceService:
         t_start = time.time()
 
         max_tokens = max_new_tokens or DEFAULT_MAX_NEW_TOKENS
+        try:
+            max_tokens = max(16, int(max_tokens))
+        except (TypeError, ValueError):
+            max_tokens = int(DEFAULT_MAX_NEW_TOKENS)
         temp = temperature if temperature is not None else DEFAULT_TEMPERATURE
         top_p_val = top_p if top_p is not None else DEFAULT_TOP_P
+        try:
+            from ...core.token_budgets import estimate_tokens as _est
+
+            _in_est = int(_est(prompt or ""))
+        except Exception:
+            _in_est = len(prompt or "") // 4
+        log.info(
+            "student_generate model=%s prompt_tokens~%d max_new_tokens=%d temp=%s",
+            self.base_model_name,
+            _in_est,
+            max_tokens,
+            temp,
+        )
 
         # Format chat template or raw prompt
         messages = [
