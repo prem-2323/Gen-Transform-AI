@@ -21,13 +21,13 @@ echo          Complete Dependency, Asset and Model Downloader
 echo ==============================================================================
 echo.
 echo This script downloads and configures ALL required components:
-echo   [1] Python Virtual Environment & Backend Packages (FastAPI, PyTorch, Diffusers)
+echo   [1] Python Virtual Environment ^& Backend Packages (FastAPI, PyTorch, Diffusers)
 echo   [2] Frontend Node Modules (React + Vite)
-echo   [3] FFmpeg & FFprobe Video/Audio Binaries
+echo   [3] FFmpeg ^& FFprobe Video/Audio Binaries
 echo   [4] HuggingFace Embedding Model (BAAI/bge-small-en-v1.5)
 echo   [5] HuggingFace Diffusers Image Model (runwayml/stable-diffusion-v1-5)
-echo   [6] Ollama AI Server & LLM Models (qwen2.5:3b, gemma2:2b)
-echo   [7] Stable Diffusion Forge & Photorealistic Model Checkpoint
+echo   [6] Ollama AI Server ^& LLM Models (qwen2.5:3b, gemma2:2b)
+echo   [7] Stable Diffusion Forge ^& Photorealistic Model Checkpoint
 echo.
 echo ==============================================================================
 echo.
@@ -93,7 +93,7 @@ if %HAS_NODE% EQU 0 (
 :: -----------------------------------------------------------------------------
 echo.
 echo ==============================================================================
-echo [*] Step 2/7: Setting up Python Virtual Environment & Backend Packages...
+echo [*] Step 2/7: Setting up Python Virtual Environment ^& Backend Packages...
 echo ==============================================================================
 
 if not exist "%ROOT_DIR%.venv\Scripts\python.exe" (
@@ -209,7 +209,7 @@ echo [*] Downloading / verifying Diffusers pipeline: runwayml/stable-diffusion-v
 :: -----------------------------------------------------------------------------
 echo.
 echo ==============================================================================
-echo [*] Step 7/7: Setting up Ollama & Downloading AI Models...
+echo [*] Step 7/7: Setting up Ollama ^& Downloading AI Models...
 echo ==============================================================================
 
 set "HAS_OLLAMA=0"
@@ -248,10 +248,10 @@ if !HAS_OLLAMA! EQU 1 (
         ping 127.0.0.1 -n 4 >nul
     )
 
-    echo [*] Pulling Ollama LLM Model: qwen2.5:3b (Analysis and Script Generation)...
+    echo [*] Pulling Ollama LLM Model: qwen2.5:3b - Analysis and Script Generation...
     ollama pull qwen2.5:3b
 
-    echo [*] Pulling Ollama Vision Model: gemma2:2b (Scene Visual Descriptions)...
+    echo [*] Pulling Ollama Vision Model: gemma2:2b - Scene Visual Descriptions...
     ollama pull gemma2:2b
 
     echo   [OK] Ollama AI models verified.
@@ -262,7 +262,7 @@ if !HAS_OLLAMA! EQU 1 (
 :: -----------------------------------------------------------------------------
 echo.
 echo ==============================================================================
-echo [*] Stable Diffusion WebUI Forge & Image Generation Setup...
+echo [*] Stable Diffusion WebUI Forge ^& Image Generation Setup...
 echo ==============================================================================
 
 set "FORGE_DIR="
@@ -301,12 +301,12 @@ if defined FORGE_DIR (
     )
 
     if !HAS_SD_MODEL! EQU 1 (
-        echo   [OK] Stable Diffusion checkpoint (.safetensors) found in:
+        echo   [OK] Stable Diffusion checkpoint found in:
         echo        !SD_MODELS_DIR!
     ) else (
         echo [*] No .safetensors model found in !SD_MODELS_DIR!
-        echo [*] Downloading photorealistic model (Realistic_Vision_V5.1.safetensors)...
-        echo     (Size: ~4.2 GB. Resume supported via curl -C -)
+        echo [*] Downloading photorealistic model: Realistic_Vision_V5.1.safetensors...
+        echo     Size: ~4.2 GB - Resume supported via curl -C -
         curl.exe -L -C - --progress-bar -o "!SD_MODELS_DIR!\Realistic_Vision_V5.1.safetensors" "https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE/resolve/main/Realistic_Vision_V5.1.safetensors"
         if exist "!SD_MODELS_DIR!\Realistic_Vision_V5.1.safetensors" (
             echo   [OK] Downloaded Realistic_Vision_V5.1.safetensors successfully!
@@ -339,13 +339,13 @@ echo                  ALL ASSETS AND MODELS DOWNLOADED SUCCESSFULLY!
 echo ==============================================================================
 echo.
 echo All components are verified and cached:
-echo   [OK] Python Virtual Environment (.venv) & Backend Requirements
+echo   [OK] Python Virtual Environment (.venv) ^& Backend Requirements
 echo   [OK] Frontend Node Modules (React + Vite)
 echo   [OK] FFmpeg and FFprobe Binaries (bin\)
 echo   [OK] HuggingFace Embedding Model (BAAI/bge-small-en-v1.5)
 echo   [OK] HuggingFace Diffusers Model (runwayml/stable-diffusion-v1-5)
 echo   [OK] Ollama AI Models (qwen2.5:3b, gemma2:2b)
-echo   [OK] Stable Diffusion Forge & Model Checkpoints
+echo   [OK] Stable Diffusion Forge ^& Model Checkpoints
 echo.
 echo To launch the full platform in 1 click, simply run:
 echo   .\start.bat

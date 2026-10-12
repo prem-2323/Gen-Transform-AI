@@ -271,8 +271,8 @@ if not exist "%ROOT_DIR%Frontend\node_modules" (
     cd /d "%ROOT_DIR%"
 )
 
-:: Probe for FastAPI, PyTorch, SentenceTransformers, and Diffusers
-"!PY_EXEC!" -c "import fastapi, uvicorn, sentence_transformers, torch, diffusers" >nul 2>&1
+:: Probe for FastAPI and Uvicorn
+"!PY_EXEC!" -c "import fastapi, uvicorn" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [*] Backend requirements missing. Running pip install...
     cd /d "%ROOT_DIR%Backend"
@@ -280,23 +280,28 @@ if %ERRORLEVEL% NEQ 0 (
     cd /d "%ROOT_DIR%"
 )
 
-:: Pre-download and cache default embedding model 'BAAI/bge-small-en-v1.5'
-"!PY_EXEC!" "%ROOT_DIR%Backend\download_model.py" --embeddings
+:: Pre-download and cache default embedding model if not already cached
+if not exist "%USERPROFILE%\.cache\huggingface\hub\models--BAAI--bge-small-en-v1.5" (
+    echo [*] Caching default embedding model 'BAAI/bge-small-en-v1.5'...
+    "!PY_EXEC!" "%ROOT_DIR%Backend\download_model.py" --embeddings
+)
 exit /b 0
 
 :CHECK_OLLAMA_MODELS
 if %HAS_OLLAMA% EQU 1 (
-    set "NEED_QWEN=0"
-    set "NEED_GEMMA=0"
-    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\qwen2.5\3b" set "NEED_QWEN=1"
-    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\gemma2\2b" set "NEED_GEMMA=1"
-    
-    if !NEED_QWEN! EQU 1 (
-        echo [*] Pulling missing Ollama model: qwen2.5:3b (Analysis and Script Generation)...
+    set "HAS_QWEN=0"
+    if exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\qwen2.5\3b" set "HAS_QWEN=1"
+    if exist "%USERPROFILE%\.ollama\models\manifests-v2\ollama.com\library\qwen2.5\3b" set "HAS_QWEN=1"
+    if !HAS_QWEN! EQU 0 (
+        echo [*] Pulling missing Ollama model: qwen2.5:3b - Analysis and Script Generation...
         ollama pull qwen2.5:3b
     )
-    if !NEED_GEMMA! EQU 1 (
-        echo [*] Pulling missing Ollama model: gemma2:2b (Scene Visual Descriptions)...
+    
+    set "HAS_GEMMA=0"
+    if exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\gemma2\2b" set "HAS_GEMMA=1"
+    if exist "%USERPROFILE%\.ollama\models\manifests-v2\ollama.com\library\gemma2\2b" set "HAS_GEMMA=1"
+    if !HAS_GEMMA! EQU 0 (
+        echo [*] Pulling missing Ollama model: gemma2:2b - Scene Visual Descriptions...
         ollama pull gemma2:2b
     )
 )
@@ -349,8 +354,14 @@ exit /b 0
 
 :START_OLLAMA
 if %HAS_OLLAMA% EQU 1 (
-    echo [*] Launching Ollama AI Server Terminal on Port 11434...
-    start "Ollama AI Server (Port 11434)" cmd /k "ollama serve"
+    curl.exe -s http://localhost:11434/api/tags >nul 2>&1
+    if !ERRORLEVEL! EQU 0 (
+        echo   [OK] Ollama AI server is already running on Port 11434.
+    ) else (
+        echo [*] Launching Ollama AI Server Terminal on Port 11434...
+        start "Ollama AI Server (Port 11434)" cmd /k "ollama serve"
+        ping 127.0.0.1 -n 3 >nul
+    )
 ) else (
     echo [INFO] Ollama not found - skipping Ollama terminal.
 )
@@ -359,15 +370,20 @@ exit /b 0
 :START_SD_FORGE
 if %HAS_FORGE% EQU 1 (
     if defined FORGE_DIR (
-        if exist "!FORGE_DIR!\start-image-api.bat" (
-            echo [*] Launching SD Forge Image API Terminal on Port 7860...
-            start "SD Forge Image API (Port 7860)" /D "!FORGE_DIR!" cmd /k "call start-image-api.bat"
-        ) else if exist "!FORGE_DIR!\webui-user.bat" (
-            echo [*] Launching SD Forge WebUI Terminal on Port 7860...
-            start "SD Forge WebUI (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--skip-python-version-check --api --listen --port 7860 && call webui-user.bat"
-        ) else if exist "!FORGE_DIR!\webui.bat" (
-            echo [*] Launching SD Forge WebUI Terminal on Port 7860...
-            start "SD Forge WebUI Terminal (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--skip-python-version-check --api --listen --port 7860 && call webui.bat"
+        curl.exe -s http://localhost:7860/sdapi/v1/sd-models >nul 2>&1
+        if !ERRORLEVEL! EQU 0 (
+            echo   [OK] SD Forge Image API is already running on Port 7860.
+        ) else (
+            if exist "!FORGE_DIR!\start-image-api.bat" (
+                echo [*] Launching SD Forge Image API Terminal on Port 7860...
+                start "SD Forge Image API (Port 7860)" /D "!FORGE_DIR!" cmd /k "call start-image-api.bat"
+            ) else if exist "!FORGE_DIR!\webui-user.bat" (
+                echo [*] Launching SD Forge WebUI Terminal on Port 7860...
+                start "SD Forge WebUI (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--skip-python-version-check --api --listen --port 7860 && call webui-user.bat"
+            ) else if exist "!FORGE_DIR!\webui.bat" (
+                echo [*] Launching SD Forge WebUI Terminal on Port 7860...
+                start "SD Forge WebUI Terminal (Port 7860)" /D "!FORGE_DIR!" cmd /k "set COMMANDLINE_ARGS=--skip-python-version-check --api --listen --port 7860 && call webui.bat"
+            )
         )
     )
 ) else (
@@ -378,7 +394,7 @@ exit /b 0
 :START_BACKEND
 echo [*] Launching Backend API Server Terminal on Port 8000...
 if exist "%ROOT_DIR%.venv\Scripts\activate.bat" (
-    start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "call "%ROOT_DIR%.venv\Scripts\activate.bat" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k ""%ROOT_DIR%.venv\Scripts\activate.bat" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 ) else (
     start "Backend API Server (Port 8000)" /D "%ROOT_DIR%Backend" cmd /k "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 )
