@@ -5,6 +5,8 @@
   "description": "DocLink Grounded RAG Platform - Gen Transform AI",
   "scripts": {
     "start": "start.bat",
+    "download": "download.bat",
+    "setup": "download.bat",
     "dev": "npm run dev --prefix Frontend",
     "frontend": "npm run dev --prefix Frontend",
     "backend": "python -m uvicorn Backend.app.main:app --host 0.0.0.0 --port 8000 --reload",

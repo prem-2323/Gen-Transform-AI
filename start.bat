@@ -146,6 +146,8 @@ echo ===========================================================================
 call :CHECK_AND_INSTALL_DEPS_IF_MISSING
 call :FIX_FORGE_NUMPY
 call :START_OLLAMA
+call :CHECK_OLLAMA_MODELS
+call :CHECK_SD_CHECKPOINT
 call :START_SD_FORGE
 call :START_BACKEND
 call :START_FRONTEND
@@ -249,6 +251,18 @@ if not defined FORGE_DIR (
 exit /b 0
 
 :CHECK_AND_INSTALL_DEPS_IF_MISSING
+:: Check if virtual environment exists; create if missing
+if not exist "%ROOT_DIR%.venv\Scripts\python.exe" (
+    echo [*] Virtual environment missing. Creating .venv...
+    python -m venv "%ROOT_DIR%.venv"
+    if exist "%ROOT_DIR%.venv\Scripts" (
+        set "PATH=%ROOT_DIR%.venv\Scripts;!PATH!"
+    )
+)
+
+set "PY_EXEC=%ROOT_DIR%.venv\Scripts\python.exe"
+if not exist "!PY_EXEC!" set "PY_EXEC=python"
+
 :: Check if node_modules exists
 if not exist "%ROOT_DIR%Frontend\node_modules" (
     echo [*] Frontend node_modules missing. Running npm install...
@@ -257,17 +271,54 @@ if not exist "%ROOT_DIR%Frontend\node_modules" (
     cd /d "%ROOT_DIR%"
 )
 
-:: Probe for FastAPI, PyTorch, and SentenceTransformers
-python -c "import fastapi, uvicorn, sentence_transformers, torch" >nul 2>&1
+:: Probe for FastAPI, PyTorch, SentenceTransformers, and Diffusers
+"!PY_EXEC!" -c "import fastapi, uvicorn, sentence_transformers, torch, diffusers" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [*] Backend requirements missing. Running pip install...
     cd /d "%ROOT_DIR%Backend"
-    python -m pip install -r requirements.txt
+    "!PY_EXEC!" -m pip install -r requirements.txt
     cd /d "%ROOT_DIR%"
 )
 
 :: Pre-download and cache default embedding model 'BAAI/bge-small-en-v1.5'
-python "%ROOT_DIR%Backend\download_model.py"
+"!PY_EXEC!" "%ROOT_DIR%Backend\download_model.py" --embeddings
+exit /b 0
+
+:CHECK_OLLAMA_MODELS
+if %HAS_OLLAMA% EQU 1 (
+    set "NEED_QWEN=0"
+    set "NEED_GEMMA=0"
+    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\qwen2.5\3b" set "NEED_QWEN=1"
+    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\gemma2\2b" set "NEED_GEMMA=1"
+    
+    if !NEED_QWEN! EQU 1 (
+        echo [*] Pulling missing Ollama model: qwen2.5:3b (Analysis and Script Generation)...
+        ollama pull qwen2.5:3b
+    )
+    if !NEED_GEMMA! EQU 1 (
+        echo [*] Pulling missing Ollama model: gemma2:2b (Scene Visual Descriptions)...
+        ollama pull gemma2:2b
+    )
+)
+exit /b 0
+
+:CHECK_SD_CHECKPOINT
+if defined FORGE_DIR (
+    set "SD_MODELS_DIR=!FORGE_DIR!\models\Stable-diffusion"
+    if not exist "!SD_MODELS_DIR!" mkdir "!SD_MODELS_DIR!" 2>nul
+    set "HAS_SD_MODEL=0"
+    for %%F in ("!SD_MODELS_DIR!\*.safetensors") do (
+        set "HAS_SD_MODEL=1"
+    )
+    if !HAS_SD_MODEL! EQU 0 (
+        echo [*] No .safetensors model found in !SD_MODELS_DIR!
+        echo [*] Auto-downloading photorealistic model: Realistic_Vision_V5.1.safetensors...
+        curl.exe -L -C - --progress-bar -o "!SD_MODELS_DIR!\Realistic_Vision_V5.1.safetensors" "https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE/resolve/main/Realistic_Vision_V5.1.safetensors"
+        if exist "!SD_MODELS_DIR!\Realistic_Vision_V5.1.safetensors" (
+            echo   [OK] Downloaded Realistic_Vision_V5.1.safetensors
+        )
+    )
+)
 exit /b 0
 
 :FIX_FORGE_NUMPY
